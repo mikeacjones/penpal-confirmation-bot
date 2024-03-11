@@ -7,18 +7,24 @@ import http.client
 import urllib
 import json
 import praw
-from openai import OpenAIError
-from openai import OpenAI
 import prawcore.exceptions
 import boto3
+from types import SimpleNamespace
 
 
 SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
-SECRETS_MANAGER = boto3.client("secretsmanager")
-SECRETS = SECRETS_MANAGER.get_secret_value(SecretId=f"penpal-confirmation-bot/{SUBREDDIT_NAME}")
-SECRETS = json.loads(SECRETS["SecretString"])
-FLAIR_PATTERN = re.compile(r" 📧 Emails: (\d+) | 📬 Letters: (\d+)")
-FLAIR_TEMPLATE_PATTERN = re.compile(r"(\d+)-(\d+):📧 Emails: ({E}) | 📬 Letters: ({L})")
+
+if not os.environ["DEV"]:
+    SECRETS_MANAGER = boto3.client("secretsmanager")
+    SECRETS = SECRETS_MANAGER.get_secret_value(SecretId=f"penpal-confirmation-bot/{SUBREDDIT_NAME}")
+    SECRETS = json.loads(SECRETS["SecretString"])
+else:
+    SECRETS = os.environ["SECRETS"]
+    SECRETS = json.loads(SECRETS)
+
+FLAIR_PATTERN = re.compile(r"📧 Emails: (\d+) \| 📬 Letters: (\d+)")
+FLAIR_TEMPLATE_PATTERN = re.compile(r"((\d+)-(\d+):)📧 Emails: ({E}) \| 📬 Letters: ({L})")
+CONFIRMATION_PATTERN = re.compile(r"u/([a-zA-Z0-9_-]{3,})\s+-?\s*(\d+)\s+-?\s*(\d+)")
 MONTHLY_POST_FLAIR_ID = os.getenv("MONTHLY_POST_FLAIR_ID", None)
 
 def setup_custom_logger(name):
@@ -69,7 +75,7 @@ def send_pushover_message(message):
 def load_template(template):
     """Loads a template either from local file or Reddit Wiki, returned as a string."""
     try:
-        wiki = SUBREDDIT.wiki[f"trade-confirmation-bot/{template}"]
+        wiki = SUBREDDIT.wiki[f"confirmation-bot/{template}"]
         LOGGER.info("Loaded template %s from wiki", template)
         return wiki.content_md
     except (prawcore.exceptions.NotFound, prawcore.exceptions.Forbidden):
@@ -80,19 +86,22 @@ def load_template(template):
 
 def post_monthly_submission():
     """Creates the monthly confirmation thread."""
-    previous_submission = next(BOT.submissions.new(limit=1))
-    submission_datetime = datetime.utcfromtimestamp(previous_submission.created_utc)
+    previous_submissions = list(BOT.submissions.new(limit=1))
+    previous_submission = None
     now = datetime.utcnow()
-    is_same_month_year = submission_datetime.year == now.year and submission_datetime.month == now.month
-    if is_same_month_year:
-        LOGGER.info("Post monthly confirmation called and skipped; monthly post already exists")
-        return
+    if (len(previous_submissions)):
+        previous_submission = previous_submissions[0]
+        submission_datetime = datetime.utcfromtimestamp(previous_submission.created_utc)
+        is_same_month_year = submission_datetime.year == now.year and submission_datetime.month == now.month
+        if is_same_month_year:
+            LOGGER.info("Post monthly confirmation called and skipped; monthly post already exists")
+            return
 
     monthly_post_template = load_template("monthly_post")
     monthly_post_title_template = load_template("monthly_post_title")
     send_pushover_message(f"Creating monthly post for r/{SUBREDDIT_NAME}")
 
-    if previous_submission.stickied:
+    if previous_submission and previous_submission.stickied:
         previous_submission.mod.sticky(state=False)
 
     new_submission = SUBREDDIT.submit(
@@ -100,7 +109,7 @@ def post_monthly_submission():
         selftext=monthly_post_template.format(
             bot_name=BOT_NAME,
             subreddit_name=SUBREDDIT_NAME,
-            previous_month_submission=previous_submission,
+            previous_month_submission=previous_submission or SimpleNamespace(**{ "title": "No Previous Confirmation Thread", "permalink": "" }),
             now=now,
         ),
         flair_id=MONTHLY_POST_FLAIR_ID,
@@ -113,6 +122,7 @@ def post_monthly_submission():
 def lock_previous_submissions():
     """Locks previous month posts."""
     LOGGER.info("Locking previous submissions")
+    send_pushover_message(f"Locking previous month's posts for r/{SUBREDDIT_NAME}")
     for submission in BOT.submissions.new(limit=10):
         if submission.stickied:
             continue
@@ -120,25 +130,205 @@ def lock_previous_submissions():
             LOGGER.info("Locking https://reddit.com%s", submission.permalink)
             submission.mod.lock()
 
+
+def load_flair_templates():
+    """Loads flair templates from Reddit, returned as a list."""
+    templates = SUBREDDIT.flair.templates
+    LOGGER.info("Loading flair templates")
+    flair_templates = {}
+
+    for template in templates:
+        match = FLAIR_TEMPLATE_PATTERN.search(template["text"])
+        if match:
+            flair_templates[(int(match.group(2)), int(match.group(3)))] = {
+                "id": template["id"],
+                "template": template["text"],
+                "mod_only": template["mod_only"],
+            }
+            LOGGER.info(
+                "Loaded flair template with minimum of %s and maximum of %s",
+                match.group(2),
+                match.group(3),
+            )
+    return flair_templates
+
+def should_process_comment(comment):
+    """Checks if a comment should be processed, returns a boolean."""
+    # Checks if we should actually process a comment in our stream loop
+    # fmt: off
+    return (
+        not comment.saved
+        and comment.banned_by is None
+        and comment.submission
+        and should_process_redditor(comment.author)
+    )
+
+def current_flair_text(redditor):
+    """Uses an API call to ensure we have the latest flair text"""
+    return next(SUBREDDIT.flair(redditor))["flair_text"]
+
+def get_flair_template(total_count, user):
+    """Retrieves the appropriate flair template, returned as an object."""
+    for (min_count, max_count), template in FLAIR_TEMPLATES.items():
+        if min_count <= total_count <= max_count:
+            # if a flair template was marked mod only, enforce that. Allows flairs like "Moderator | Trades min-max"
+            if template["mod_only"] == (user in CURRENT_MODS):
+                return template
+
+    return None
+
+def increment_flair(redditor, new_emails, new_letters):
+    current_flair = current_flair_text(redditor)
+    if current_flair is None or current_flair == "":
+        return ("No Flair", set_flair(redditor, new_emails, new_letters))
+
+    match = FLAIR_PATTERN.search(current_flair)
+    if not match:
+        return (None, None)
+    
+    current_emails = int(match.group(1))
+    current_letters = int(match.group(2))
+    return (current_flair, set_flair(redditor, current_emails + new_emails, current_letters + new_letters))
+
+def set_flair(redditor, emails, letters):
+    new_total = emails + letters
+    flair_template_obj = get_flair_template(new_total, redditor)
+    flair_template = flair_template_obj["template"]
+    if not flair_template:
+        return
+    
+    match = FLAIR_TEMPLATE_PATTERN.search(flair_template)
+    if not match:
+        return
+    matches = [match.group(0), match.group(1),
+        match.group(2),
+        match.group(3),
+        match.group(4),
+        match.group(5)]
+    start_range, end_range = match.span(1)
+    start_email, end_email = match.span(4)
+    start_letters, end_letters = match.span(5)
+    new_flair_text = flair_template[:start_range] + flair_template[end_range:start_email] + str(emails) + flair_template[end_email:start_letters] + str(letters) + flair_template[end_letters:]
+    SUBREDDIT.flair.set(redditor, text=new_flair_text, flair_template_id=flair_template_obj["id"])
+    return new_flair_text
+
+def should_process_redditor(redditor):
+    """Checks if this is an author where we should process their comment/submission"""
+    try:
+        if redditor is None:
+            return False
+
+        if not hasattr(redditor, "id"):
+            return False
+
+        if redditor.id == BOT.id:
+            return False
+
+        if hasattr(redditor, "is_suspended"):
+            return not redditor.is_suspended
+        return True
+    except prawcore.exceptions.NotFound:
+        return False
+
+def handle_catch_up():
+    current_submission = next(BOT.submissions.new(limit=1))
+    current_submission.comment_sort = "new"
+    current_submission.comments.replace_more(limit=None)
+    LOGGER.info("Starting catch-up process")
+    for comment in current_submission.comments.list():
+        if comment.saved:
+            continue
+        handle_confirmation_thread(comment)
+    LOGGER.info("Catch-up process finished")
+
+def get_redditor(name):
+    try:
+        redditor = REDDIT.redditor(name)
+        if redditor.id:
+            return redditor
+    except prawcore.exceptions.NotFound:
+        return None
+    return None
+
+def handle_confirmation_thread(comment):
+    """Handles a comment left on the confirmation thread."""
+    if not comment.is_root:
+        comment.save()
+        return
+
+    all_matches = CONFIRMATION_PATTERN.findall(comment.body)
+    if (not len(all_matches)):
+        comment.save()
+        return
+    for match in all_matches:
+        try:
+            handle_confirmation(comment, match)
+        except Exception as ex:
+            LOGGER.info("Exception occurred while handling confirmation")
+            LOGGER.info(ex)
+    comment.save()
+
+def handle_confirmation(comment, match):
+    mentioned_name = match[0]
+    emails = int(match[1])
+    letters = int(match[2])
+    mentioned_user = get_redditor(mentioned_name)
+
+    if not mentioned_user:
+        comment.reply(USER_DOESNT_EXIST.format(comment=comment, mentioned_name=mentioned_name))
+        return
+    
+    if mentioned_user.id == comment.author.id:
+        comment.reply(CANT_UPDATE_YOURSELF)
+        return
+
+    old_flair, new_flair = increment_flair(mentioned_user, emails, letters)
+    if not old_flair or not new_flair:
+        return
+    
+    comment.reply(CONFIRMATION_TEMPLATE.format(mentioned_name=mentioned_name, old_flair=old_flair, new_flair=new_flair))
+
+
+def handle_non_confirmation_thread(comment):
+    """Handles a comment left outside the confirmation thread."""
+    return
+
+
+def monitor_comments():
+    """Comment monitoring function; loops infinitely."""
+    for comment in SUBREDDIT.stream.comments():
+        if not should_process_comment(comment):
+            continue
+
+        LOGGER.info("Processing new comment https://reddit.com%s", comment.permalink)
+
+        if comment.author.name.lower() == "automoderator":
+            continue
+
+        if comment.submission.author != BOT:
+            handle_non_confirmation_thread(comment)
+            continue
+
+        if comment.submission.author == BOT:
+            handle_confirmation_thread(comment)
+            continue
+
 if __name__ == "__main__":
     try:
         if len(sys.argv) > 1:
             if sys.argv[1] == "create-monthly":
                 post_monthly_submission()
-                send_pushover_message(f"Locking previous month's posts for r/{SUBREDDIT_NAME}")
                 lock_previous_submissions()
         else:
             LOGGER.info("Bot start up")
             send_pushover_message(f"Bot startup for r/{SUBREDDIT_NAME}")
 
-            TRADE_CONFIRMATION_TEMPLATE = load_template("trade_confirmation")
-            ALREADY_CONFIRMED_TEMPLATE = load_template("already_confirmed")
-            CANT_CONFIRM_USERNAME_TEMPLATE = load_template("cant_confirm_username")
-            NO_HISTORY_TEMPLATE = load_template("no_history")
+            CONFIRMATION_TEMPLATE = load_template("confirmation_message")
             OLD_CONFIRMATION_THREAD = load_template("old_confirmation_thread")
+            USER_DOESNT_EXIST = load_template("user_doesnt_exist")
+            CANT_UPDATE_YOURSELF = load_template("cant_update_yourself")
             FLAIR_TEMPLATES = load_flair_templates()
             CURRENT_MODS = [str(mod) for mod in SUBREDDIT.moderator()]
-            OPENAI_CLIENT = OpenAI(api_key=SECRETS["OPENAI_API_KEY"])
             handle_catch_up()
             monitor_comments()
     except Exception as main_exception:
