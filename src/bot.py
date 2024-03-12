@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
 
-if not os.environ["DEV"]:
+if "DEV" not in os.environ:
     SECRETS_MANAGER = boto3.client("secretsmanager")
     SECRETS = SECRETS_MANAGER.get_secret_value(SecretId=f"penpal-confirmation-bot/{SUBREDDIT_NAME}")
     SECRETS = json.loads(SECRETS["SecretString"])
