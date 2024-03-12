@@ -6,7 +6,7 @@
   "configurations": [
     {
       "name": "Python: Debug Comment Handler",
-      "type": "debugpy",
+      "type": "python",
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
@@ -15,7 +15,7 @@
     },
     {
       "name": "Python: Debug Create Monthly",
-      "type": "debugpy",
+      "type": "python",
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",

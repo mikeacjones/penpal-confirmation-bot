@@ -22,7 +22,7 @@ else:
     SECRETS = os.environ["SECRETS"]
     SECRETS = json.loads(SECRETS)
 
-FLAIR_PATTERN = re.compile(r"📧 Emails: (\d+) \| 📬 Letters: (\d+)")
+FLAIR_PATTERN = re.compile(r"📧 Emails: (\d+|{E}) \| 📬 Letters: (\d+|{L})")
 FLAIR_TEMPLATE_PATTERN = re.compile(r"((\d+)-(\d+):)📧 Emails: ({E}) \| 📬 Letters: ({L})")
 SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(r"📧 Emails: ({E}) \| 📬 Letters: ({L})")
 CONFIRMATION_PATTERN = re.compile(r"u/([a-zA-Z0-9_-]{3,})\s+\\?-?\s*(\d+)(?:\s+|\s*-\s*)(\d+)")
@@ -56,6 +56,12 @@ BOT = REDDIT.user.me()
 BOT_NAME = BOT.name
 SUBREDDIT = REDDIT.subreddit(SUBREDDIT_NAME)
 
+def sint(str, default):
+    try:
+        return int(str)
+    except ValueError:
+        return default
+
 def send_pushover_message(message):
     """Sends a pushover notification."""
     conn = http.client.HTTPSConnection("api.pushover.net:443")
@@ -87,11 +93,9 @@ def load_template(template):
 
 def post_monthly_submission():
     """Creates the monthly confirmation thread."""
-    previous_submissions = list(BOT.submissions.new(limit=1))
-    previous_submission = None
+    previous_submission = get_current_confirmation_post()
     now = datetime.utcnow()
-    if (len(previous_submissions)):
-        previous_submission = previous_submissions[0]
+    if (previous_submission):
         submission_datetime = datetime.utcfromtimestamp(previous_submission.created_utc)
         is_same_month_year = submission_datetime.year == now.year and submission_datetime.month == now.month
         if is_same_month_year:
@@ -142,7 +146,7 @@ def load_flair_templates():
     for template in templates:
         match = FLAIR_TEMPLATE_PATTERN.search(template["text"])
         if match:
-            flair_templates[(int(match.group(2)), int(match.group(3)))] = {
+            flair_templates[(sint(match.group(2), 0), sint(match.group(3), 0))] = {
                 "id": template["id"],
                 "template": template["text"],
                 "mod_only": template["mod_only"],
@@ -197,8 +201,8 @@ def increment_flair(redditor, new_emails, new_letters):
     
     current_emails = match.group(1)
     current_letters = match.group(2)
-    new_emails += int(current_emails)
-    new_letters += int(current_letters)
+    new_emails += sint(current_emails, 0)
+    new_letters += sint(current_letters, 0)
     new_total = new_emails + new_letters
 
     special_flair_obj = get_special_flair(current_flair_text, current_emails, current_letters)
@@ -263,8 +267,15 @@ def should_process_redditor(redditor):
     except prawcore.exceptions.NotFound:
         return False
 
+def get_current_confirmation_post():
+    for submission in BOT.submissions.new(limit=5):
+        if submission.subreddit.id == SUBREDDIT.id:
+            if submission.stickied:
+                return submission
+    return None
+
 def handle_catch_up():
-    current_submission = next(BOT.submissions.new(limit=1))
+    current_submission = get_current_confirmation_post()
     current_submission.comment_sort = "new"
     current_submission.comments.replace_more(limit=None)
     LOGGER.info("Starting catch-up process")
@@ -303,8 +314,8 @@ def handle_confirmation_thread(comment):
 
 def handle_confirmation(comment, match):
     mentioned_name = match[0]
-    emails = int(match[1])
-    letters = int(match[2])
+    emails = sint(match[1], 0)
+    letters = sint(match[2], 0)
     mentioned_user = get_redditor(mentioned_name)
 
     if not mentioned_user:
