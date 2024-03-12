@@ -25,7 +25,7 @@ else:
 FLAIR_PATTERN = re.compile(r"📧 Emails: (\d+) \| 📬 Letters: (\d+)")
 FLAIR_TEMPLATE_PATTERN = re.compile(r"((\d+)-(\d+):)📧 Emails: ({E}) \| 📬 Letters: ({L})")
 SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(r"📧 Emails: ({E}) \| 📬 Letters: ({L})")
-CONFIRMATION_PATTERN = re.compile(r"u/([a-zA-Z0-9_-]{3,})\s+-?\s*(\d+)(?:\s+|\s*-\s*)(\d+)")
+CONFIRMATION_PATTERN = re.compile(r"u/([a-zA-Z0-9_-]{3,})\s+\\?-?\s*(\d+)(?:\s+|\s*-\s*)(\d+)")
 MONTHLY_POST_FLAIR_ID = os.getenv("MONTHLY_POST_FLAIR_ID", None)
 
 def setup_custom_logger(name):
@@ -188,7 +188,8 @@ def increment_flair(redditor, new_emails, new_letters):
     current_flair = get_current_flair(redditor)
     current_flair_text = current_flair["flair_text"]
     if current_flair_text is None or current_flair_text == "":
-        return ("No Flair", set_flair(redditor, new_emails, new_letters))
+        new_flair_obj = get_flair_template(new_emails + new_letters, redditor)
+        return ("No Flair", set_flair(redditor, new_emails, new_letters, new_flair_obj))
 
     match = FLAIR_PATTERN.search(current_flair_text)
     if not match:
