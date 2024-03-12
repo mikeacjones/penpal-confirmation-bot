@@ -24,7 +24,8 @@ else:
 
 FLAIR_PATTERN = re.compile(r"📧 Emails: (\d+) \| 📬 Letters: (\d+)")
 FLAIR_TEMPLATE_PATTERN = re.compile(r"((\d+)-(\d+):)📧 Emails: ({E}) \| 📬 Letters: ({L})")
-CONFIRMATION_PATTERN = re.compile(r"u/([a-zA-Z0-9_-]{3,})\s+-?\s*(\d+)\s+-?\s*(\d+)")
+SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(r"📧 Emails: ({E}) \| 📬 Letters: ({L})")
+CONFIRMATION_PATTERN = re.compile(r"u/([a-zA-Z0-9_-]{3,})\s+-?\s*(\d+)(?:\s+|\s*-\s*)(\d+)")
 MONTHLY_POST_FLAIR_ID = os.getenv("MONTHLY_POST_FLAIR_ID", None)
 
 def setup_custom_logger(name):
@@ -136,6 +137,7 @@ def load_flair_templates():
     templates = SUBREDDIT.flair.templates
     LOGGER.info("Loading flair templates")
     flair_templates = {}
+    special_templates = []
 
     for template in templates:
         match = FLAIR_TEMPLATE_PATTERN.search(template["text"])
@@ -150,7 +152,11 @@ def load_flair_templates():
                 match.group(2),
                 match.group(3),
             )
-    return flair_templates
+        else:
+            special_match = SPECIAL_FLAIR_TEMPLATE_PATTERN.search(template["text"])
+            if special_match:
+                special_templates.append({ "id": template["id"], "template": template["text"] })
+    return (flair_templates, special_templates)
 
 def should_process_comment(comment):
     """Checks if a comment should be processed, returns a boolean."""
@@ -158,14 +164,15 @@ def should_process_comment(comment):
     # fmt: off
     return (
         not comment.saved
+        and comment.is_root
         and comment.banned_by is None
         and comment.submission
         and should_process_redditor(comment.author)
     )
 
-def current_flair_text(redditor):
+def get_current_flair(redditor):
     """Uses an API call to ensure we have the latest flair text"""
-    return next(SUBREDDIT.flair(redditor))["flair_text"]
+    return next(SUBREDDIT.flair(redditor))
 
 def get_flair_template(total_count, user):
     """Retrieves the appropriate flair template, returned as an object."""
@@ -178,21 +185,50 @@ def get_flair_template(total_count, user):
     return None
 
 def increment_flair(redditor, new_emails, new_letters):
-    current_flair = current_flair_text(redditor)
-    if current_flair is None or current_flair == "":
+    current_flair = get_current_flair(redditor)
+    current_flair_text = current_flair["flair_text"]
+    if current_flair_text is None or current_flair_text == "":
         return ("No Flair", set_flair(redditor, new_emails, new_letters))
 
-    match = FLAIR_PATTERN.search(current_flair)
+    match = FLAIR_PATTERN.search(current_flair_text)
     if not match:
         return (None, None)
     
-    current_emails = int(match.group(1))
-    current_letters = int(match.group(2))
-    return (current_flair, set_flair(redditor, current_emails + new_emails, current_letters + new_letters))
+    current_emails = match.group(1)
+    current_letters = match.group(2)
+    new_emails += int(current_emails)
+    new_letters += int(current_letters)
+    new_total = new_emails + new_letters
 
-def set_flair(redditor, emails, letters):
-    new_total = emails + letters
-    flair_template_obj = get_flair_template(new_total, redditor)
+    special_flair_obj = get_special_flair(current_flair_text, current_emails, current_letters)
+    if special_flair_obj:
+        return (current_flair_text, set_special_flair(redditor, new_emails, new_letters, special_flair_obj))
+    new_flair_obj = get_flair_template(new_total, redditor)
+    return (current_flair_text, set_flair(redditor,  new_emails,  new_letters, new_flair_obj))
+
+def get_special_flair(current_flair_text, current_emails, current_letters):
+    for template in SPECIAL_FLAIR_TEMPLATES:
+        flair_text = template["template"].replace("{E}", current_emails).replace("{L}", current_letters)
+        if flair_text == current_flair_text:
+            return template
+    return None
+
+def set_special_flair(redditor, emails, letters, flair_template_obj):
+    flair_template = flair_template_obj["template"]
+    if not flair_template:
+        return
+    
+    match = SPECIAL_FLAIR_TEMPLATE_PATTERN.search(flair_template)
+    if not match:
+        return
+    
+    start_email, end_email = match.span(1)
+    start_letters, end_letters = match.span(2)
+    new_flair_text = flair_template[:start_email] + str(emails) + flair_template[end_email:start_letters] + str(letters) + flair_template[end_letters:]
+    SUBREDDIT.flair.set(redditor, text=new_flair_text, flair_template_id=flair_template_obj["id"])
+    return new_flair_text
+
+def set_flair(redditor, emails, letters, flair_template_obj):
     flair_template = flair_template_obj["template"]
     if not flair_template:
         return
@@ -200,11 +236,7 @@ def set_flair(redditor, emails, letters):
     match = FLAIR_TEMPLATE_PATTERN.search(flair_template)
     if not match:
         return
-    matches = [match.group(0), match.group(1),
-        match.group(2),
-        match.group(3),
-        match.group(4),
-        match.group(5)]
+
     start_range, end_range = match.span(1)
     start_email, end_email = match.span(4)
     start_letters, end_letters = match.span(5)
@@ -327,7 +359,7 @@ if __name__ == "__main__":
             OLD_CONFIRMATION_THREAD = load_template("old_confirmation_thread")
             USER_DOESNT_EXIST = load_template("user_doesnt_exist")
             CANT_UPDATE_YOURSELF = load_template("cant_update_yourself")
-            FLAIR_TEMPLATES = load_flair_templates()
+            FLAIR_TEMPLATES, SPECIAL_FLAIR_TEMPLATES = load_flair_templates()
             CURRENT_MODS = [str(mod) for mod in SUBREDDIT.moderator()]
             handle_catch_up()
             monitor_comments()
