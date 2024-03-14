@@ -332,6 +332,7 @@ def handle_confirmation(comment, match):
 
 def handle_non_confirmation_thread_comment(comment):
     """Handles a comment left outside the confirmation thread."""
+    comment.save()
     return
 
 def monitor_comments():
