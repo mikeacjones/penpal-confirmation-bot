@@ -12,6 +12,35 @@ import boto3
 from types import SimpleNamespace
 
 
+class BotSettings:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(BotSettings, cls).__new__(cls)
+        return cls._instance
+
+    def load_settings(cls):
+        cls._instance.CONFIRMATION_PATTERN = re.compile(
+            load_template("confirmation_regex_pattern")
+        )
+        cls._instance.FLAIR_PATTERN = re.compile(load_template("flair_regex"))
+        cls._instance.FLAIR_TEMPLATE_PATTERN = re.compile(
+            load_template("ranged_flair_template_regex")
+        )
+        cls._instance.SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(
+            load_template("special_flair_template_regex")
+        )
+        cls._instance.CONFIRMATION_TEMPLATE = load_template("confirmation_message")
+        cls._instance.OLD_CONFIRMATION_THREAD = load_template("old_confirmation_thread")
+        cls._instance.USER_DOESNT_EXIST = load_template("user_doesnt_exist")
+        cls._instance.CANT_UPDATE_YOURSELF = load_template("cant_update_yourself")
+        cls._instance.FLAIR_TEMPLATES, cls._instance.SPECIAL_FLAIR_TEMPLATES = (
+            load_flair_templates()
+        )
+        cls._instance.CURRENT_MODS = [str(mod) for mod in SUBREDDIT.moderator()]
+
+
 def sint(str, default):
     try:
         return int(str)
@@ -103,7 +132,7 @@ def load_flair_templates():
     special_templates = []
 
     for template in templates:
-        match = FLAIR_TEMPLATE_PATTERN.search(template["text"])
+        match = BOT_SETTINGS.FLAIR_TEMPLATE_PATTERN.search(template["text"])
         if match:
             flair_templates[(sint(match.group(2), 0), sint(match.group(3), 0))] = {
                 "id": template["id"],
@@ -116,7 +145,9 @@ def load_flair_templates():
                 match.group(3),
             )
         else:
-            special_match = SPECIAL_FLAIR_TEMPLATE_PATTERN.search(template["text"])
+            special_match = BOT_SETTINGS.SPECIAL_FLAIR_TEMPLATE_PATTERN.search(
+                template["text"]
+            )
             if special_match:
                 special_templates.append(
                     {"id": template["id"], "template": template["text"]}
@@ -220,17 +251,17 @@ def get_current_flair(redditor):
 
 def get_flair_template(total_count, user):
     """Retrieves the appropriate flair template, returned as an object."""
-    for (min_count, max_count), template in FLAIR_TEMPLATES.items():
+    for (min_count, max_count), template in BOT_SETTINGS.FLAIR_TEMPLATES.items():
         if min_count <= total_count <= max_count:
             # if a flair template was marked mod only, enforce that. Allows flairs like "Moderator | Trades min-max"
-            if template["mod_only"] == (user in CURRENT_MODS):
+            if template["mod_only"] == (user in BOT_SETTINGS.CURRENT_MODS):
                 return template
 
     return None
 
 
 def get_special_flair(current_flair_text, current_emails, current_letters):
-    for template in SPECIAL_FLAIR_TEMPLATES:
+    for template in BOT_SETTINGS.SPECIAL_FLAIR_TEMPLATES:
         flair_text = (
             template["template"]
             .replace("{E}", current_emails)
@@ -266,7 +297,7 @@ def increment_flair(redditor, new_emails, new_letters):
         new_flair_obj = get_flair_template(new_emails + new_letters, redditor)
         return ("No Flair", set_flair(redditor, new_emails, new_letters, new_flair_obj))
 
-    match = FLAIR_PATTERN.search(current_flair_text)
+    match = BOT_SETTINGS.FLAIR_PATTERN.search(current_flair_text)
     if not match:
         return (None, None)
 
@@ -296,7 +327,7 @@ def set_special_flair(redditor, emails, letters, flair_template_obj):
     if not flair_template:
         return
 
-    match = SPECIAL_FLAIR_TEMPLATE_PATTERN.search(flair_template)
+    match = BOT_SETTINGS.SPECIAL_FLAIR_TEMPLATE_PATTERN.search(flair_template)
     if not match:
         return
 
@@ -320,7 +351,7 @@ def set_flair(redditor, emails, letters, flair_template_obj):
     if not flair_template:
         return
 
-    match = FLAIR_TEMPLATE_PATTERN.search(flair_template)
+    match = BOT_SETTINGS.FLAIR_TEMPLATE_PATTERN.search(flair_template)
     if not match:
         return
 
@@ -359,7 +390,7 @@ def handle_confirmation_thread_comment(comment):
         comment.save()
         return
 
-    all_matches = CONFIRMATION_PATTERN.findall(comment.body)
+    all_matches = BOT_SETTINGS.CONFIRMATION_PATTERN.findall(comment.body)
     if not len(all_matches):
         comment.save()
         return
@@ -379,24 +410,29 @@ def handle_confirmation(comment, match):
     mentioned_user = get_redditor(mentioned_name)
 
     if not mentioned_user:
-        comment.reply(
-            USER_DOESNT_EXIST.format(comment=comment, mentioned_name=mentioned_name)
+        comment = comment.reply(
+            BOT_SETTINGS.USER_DOESNT_EXIST.format(
+                comment=comment, mentioned_name=mentioned_name
+            )
         )
+        comment.disable_inbox_replies()
         return
 
     if mentioned_user.id == comment.author.id:
-        comment.reply(CANT_UPDATE_YOURSELF)
+        comment = comment.reply(BOT_SETTINGS.CANT_UPDATE_YOURSELF)
+        comment.disable_inbox_replies()
         return
 
     old_flair, new_flair = increment_flair(mentioned_user, emails, letters)
     if not old_flair or not new_flair:
         return
 
-    comment.reply(
-        CONFIRMATION_TEMPLATE.format(
+    comment = comment.reply(
+        BOT_SETTINGS.CONFIRMATION_TEMPLATE.format(
             mentioned_name=mentioned_name, old_flair=old_flair, new_flair=new_flair
         )
     )
+    comment.disable_inbox_replies()
     LOGGER.info("Updated %s to %s for %s", old_flair, new_flair, mentioned_name)
 
 
@@ -408,7 +444,10 @@ def handle_non_confirmation_thread_comment(comment):
 
 def monitor_comments():
     """Comment monitoring function; loops infinitely."""
-    for comment in SUBREDDIT.stream.comments():
+    for comment in SUBREDDIT.stream.comments(pause_after=-1, skip_existing=True):
+        if comment is None:
+            break
+        LOGGER.info("Comment loop calling")
         if not should_process_comment(comment):
             continue
 
@@ -426,6 +465,27 @@ def monitor_comments():
             continue
 
 
+def monitor_mail():
+    """Monitors messages sent to the bot"""
+    for message in REDDIT.inbox.unread(mark_read=True):
+        if message is None:
+            break
+        if not isinstance(message, praw.models.Message):
+            message.mark_read()
+            continue
+        LOGGER.info("Inbox loop calling")
+        if message.author not in BOT_SETTINGS.CURRENT_MODS:
+            message.mark_read()
+            continue
+        LOGGER.info("Received a private message from a mod")
+        if "reload" in message.body:
+            LOGGER.info("Mod requested settings reload")
+            BOT_SETTINGS.load_settings()
+            # load globals for this route
+        message.mark_read()
+    return
+
+
 if __name__ == "__main__":
     try:
         if len(sys.argv) > 1:
@@ -440,25 +500,15 @@ if __name__ == "__main__":
             send_pushover_message(f"Bot startup for r/{SUBREDDIT_NAME}")
 
             # load globals for this route
-            CONFIRMATION_PATTERN = re.compile(
-                load_template("confirmation_regex_pattern")
-            )
-            FLAIR_PATTERN = re.compile(load_template("flair_regex"))
-            FLAIR_TEMPLATE_PATTERN = re.compile(
-                load_template("ranged_flair_template_regex")
-            )
-            SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(
-                load_template("special_flair_template_regex")
-            )
-            CONFIRMATION_TEMPLATE = load_template("confirmation_message")
-            OLD_CONFIRMATION_THREAD = load_template("old_confirmation_thread")
-            USER_DOESNT_EXIST = load_template("user_doesnt_exist")
-            CANT_UPDATE_YOURSELF = load_template("cant_update_yourself")
-            FLAIR_TEMPLATES, SPECIAL_FLAIR_TEMPLATES = load_flair_templates()
-            CURRENT_MODS = [str(mod) for mod in SUBREDDIT.moderator()]
+            BOT_SETTINGS = BotSettings()
+            BOT_SETTINGS.load_settings()
 
             handle_catch_up()
-            monitor_comments()
+
+            while True:
+                monitor_comments()
+                monitor_mail()
+
     except Exception as main_exception:
         LOGGER.exception("Main crashed")
         send_pushover_message(f"Bot error for r/{SUBREDDIT_NAME}")
