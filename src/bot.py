@@ -12,19 +12,30 @@ import boto3
 from types import SimpleNamespace
 
 
+def sint(str, default):
+    try:
+        return int(str)
+    except ValueError:
+        return default
+
 
 def load_secrets():
     if "DEV" not in os.environ:
         secrets_manager = boto3.client("secretsmanager")
-        secrets = secrets_manager.get_secret_value(SecretId=f"penpal-confirmation-bot/{SUBREDDIT_NAME}")
+        secrets = secrets_manager.get_secret_value(
+            SecretId=f"penpal-confirmation-bot/{SUBREDDIT_NAME}"
+        )
         return json.loads(secrets["SecretString"])
     else:
         secrets = os.environ["SECRETS"]
         return json.loads(secrets)
 
+
 def setup_custom_logger(name):
     """Set up the logger."""
-    formatter = logging.Formatter(fmt="%(asctime)s %(levelname)-8s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    formatter = logging.Formatter(
+        fmt="%(asctime)s %(levelname)-8s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
     handler = logging.FileHandler("log.txt", mode="w")
     handler.setFormatter(formatter)
     screen_handler = logging.StreamHandler(stream=sys.stdout)
@@ -35,11 +46,6 @@ def setup_custom_logger(name):
     loggr.addHandler(screen_handler)
     return loggr
 
-def sint(str, default):
-    try:
-        return int(str)
-    except ValueError:
-        return default
 
 def send_pushover_message(message):
     """Sends a pushover notification."""
@@ -58,13 +64,9 @@ def send_pushover_message(message):
     )
     conn.getresponse()
 
+
 SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
 SECRETS = load_secrets()
-FLAIR_PATTERN = re.compile(r"📧 Emails: (\d+|{E}) \| 📬 Letters: (\d+|{L})")
-FLAIR_TEMPLATE_PATTERN = re.compile(r"((\d+)-(\d+):)📧 Emails: ({E}) \| 📬 Letters: ({L})")
-SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(r"📧 Emails: ({E}) \| 📬 Letters: ({L})")
-CONFIRMATION_PATTERN = re.compile(r"u/([a-zA-Z0-9_-]{3,})\s+\\?-?\s*(\d+)(?:\s+|\s*-\s*)(\d+)")
-MONTHLY_POST_FLAIR_ID = os.getenv("MONTHLY_POST_FLAIR_ID", None)
 LOGGER = setup_custom_logger("penpal-confirmation-bot")
 
 REDDIT = praw.Reddit(
@@ -74,10 +76,10 @@ REDDIT = praw.Reddit(
     username=SECRETS["REDDIT_USERNAME"],
     password=SECRETS["REDDIT_PASSWORD"],
 )
-
 BOT = REDDIT.user.me()
 BOT_NAME = BOT.name
 SUBREDDIT = REDDIT.subreddit(SUBREDDIT_NAME)
+
 
 def load_template(template):
     """Loads a template either from local file or Reddit Wiki, returned as a string."""
@@ -87,8 +89,11 @@ def load_template(template):
         return wiki.content_md
     except (prawcore.exceptions.NotFound, prawcore.exceptions.Forbidden):
         with open(f"src/mdtemplates/{template}.md", "r", encoding="utf-8") as file:
-            LOGGER.info("Loading template %s from src/mdtemplates/%s.md", template, template)
+            LOGGER.info(
+                "Loading template %s from src/mdtemplates/%s.md", template, template
+            )
             return file.read()
+
 
 def load_flair_templates():
     """Loads flair templates from Reddit, returned as a list."""
@@ -113,18 +118,26 @@ def load_flair_templates():
         else:
             special_match = SPECIAL_FLAIR_TEMPLATE_PATTERN.search(template["text"])
             if special_match:
-                special_templates.append({ "id": template["id"], "template": template["text"] })
+                special_templates.append(
+                    {"id": template["id"], "template": template["text"]}
+                )
     return (flair_templates, special_templates)
+
 
 def post_monthly_submission():
     """Creates the monthly confirmation thread."""
     previous_submission = get_current_confirmation_post()
     now = datetime.utcnow()
-    if (previous_submission):
+    if previous_submission:
         submission_datetime = datetime.utcfromtimestamp(previous_submission.created_utc)
-        is_same_month_year = submission_datetime.year == now.year and submission_datetime.month == now.month
+        is_same_month_year = (
+            submission_datetime.year == now.year
+            and submission_datetime.month == now.month
+        )
         if is_same_month_year:
-            LOGGER.info("Post monthly confirmation called and skipped; monthly post already exists")
+            LOGGER.info(
+                "Post monthly confirmation called and skipped; monthly post already exists"
+            )
             return
 
     monthly_post_template = load_template("monthly_post")
@@ -139,7 +152,10 @@ def post_monthly_submission():
         selftext=monthly_post_template.format(
             bot_name=BOT_NAME,
             subreddit_name=SUBREDDIT_NAME,
-            previous_month_submission=previous_submission or SimpleNamespace(**{ "title": "No Previous Confirmation Thread", "permalink": "" }),
+            previous_month_submission=previous_submission
+            or SimpleNamespace(
+                **{"title": "No Previous Confirmation Thread", "permalink": ""}
+            ),
             now=now,
         ),
         flair_id=MONTHLY_POST_FLAIR_ID,
@@ -147,7 +163,11 @@ def post_monthly_submission():
     )
     new_submission.mod.sticky(bottom=False)
     new_submission.mod.suggested_sort(sort="new")
-    LOGGER.info("Created new monthly confirmation post: https://reddit.com%s", new_submission.permalink)
+    LOGGER.info(
+        "Created new monthly confirmation post: https://reddit.com%s",
+        new_submission.permalink,
+    )
+
 
 def lock_previous_submissions():
     """Locks previous month posts."""
@@ -160,6 +180,7 @@ def lock_previous_submissions():
             LOGGER.info("Locking https://reddit.com%s", submission.permalink)
             submission.mod.lock()
 
+
 def should_process_comment(comment):
     """Checks if a comment should be processed, returns a boolean."""
     # Checks if we should actually process a comment in our stream loop
@@ -171,6 +192,7 @@ def should_process_comment(comment):
         and comment.submission
         and should_process_redditor(comment.author)
     )
+
 
 def should_process_redditor(redditor):
     """Checks if this is an author where we should process their comment/submission"""
@@ -190,9 +212,11 @@ def should_process_redditor(redditor):
     except prawcore.exceptions.NotFound:
         return False
 
+
 def get_current_flair(redditor):
     """Uses an API call to ensure we have the latest flair text"""
     return next(SUBREDDIT.flair(redditor))
+
 
 def get_flair_template(total_count, user):
     """Retrieves the appropriate flair template, returned as an object."""
@@ -204,12 +228,18 @@ def get_flair_template(total_count, user):
 
     return None
 
+
 def get_special_flair(current_flair_text, current_emails, current_letters):
     for template in SPECIAL_FLAIR_TEMPLATES:
-        flair_text = template["template"].replace("{E}", current_emails).replace("{L}", current_letters)
+        flair_text = (
+            template["template"]
+            .replace("{E}", current_emails)
+            .replace("{L}", current_letters)
+        )
         if flair_text == current_flair_text:
             return template
     return None
+
 
 def get_current_confirmation_post():
     for submission in BOT.submissions.new(limit=5):
@@ -217,6 +247,7 @@ def get_current_confirmation_post():
             if submission.stickied:
                 return submission
     return None
+
 
 def get_redditor(name):
     try:
@@ -226,6 +257,7 @@ def get_redditor(name):
     except prawcore.exceptions.NotFound:
         return None
     return None
+
 
 def increment_flair(redditor, new_emails, new_letters):
     current_flair = get_current_flair(redditor)
@@ -237,39 +269,57 @@ def increment_flair(redditor, new_emails, new_letters):
     match = FLAIR_PATTERN.search(current_flair_text)
     if not match:
         return (None, None)
-    
+
     current_emails = match.group(1)
     current_letters = match.group(2)
     new_emails += sint(current_emails, 0)
     new_letters += sint(current_letters, 0)
     new_total = new_emails + new_letters
 
-    special_flair_obj = get_special_flair(current_flair_text, current_emails, current_letters)
+    special_flair_obj = get_special_flair(
+        current_flair_text, current_emails, current_letters
+    )
     if special_flair_obj:
-        return (current_flair_text, set_special_flair(redditor, new_emails, new_letters, special_flair_obj))
+        return (
+            current_flair_text,
+            set_special_flair(redditor, new_emails, new_letters, special_flair_obj),
+        )
     new_flair_obj = get_flair_template(new_total, redditor)
-    return (current_flair_text, set_flair(redditor,  new_emails,  new_letters, new_flair_obj))
+    return (
+        current_flair_text,
+        set_flair(redditor, new_emails, new_letters, new_flair_obj),
+    )
+
 
 def set_special_flair(redditor, emails, letters, flair_template_obj):
     flair_template = flair_template_obj["template"]
     if not flair_template:
         return
-    
+
     match = SPECIAL_FLAIR_TEMPLATE_PATTERN.search(flair_template)
     if not match:
         return
-    
+
     start_email, end_email = match.span(1)
     start_letters, end_letters = match.span(2)
-    new_flair_text = flair_template[:start_email] + str(emails) + flair_template[end_email:start_letters] + str(letters) + flair_template[end_letters:]
-    SUBREDDIT.flair.set(redditor, text=new_flair_text, flair_template_id=flair_template_obj["id"])
+    new_flair_text = (
+        flair_template[:start_email]
+        + str(emails)
+        + flair_template[end_email:start_letters]
+        + str(letters)
+        + flair_template[end_letters:]
+    )
+    SUBREDDIT.flair.set(
+        redditor, text=new_flair_text, flair_template_id=flair_template_obj["id"]
+    )
     return new_flair_text
+
 
 def set_flair(redditor, emails, letters, flair_template_obj):
     flair_template = flair_template_obj["template"]
     if not flair_template:
         return
-    
+
     match = FLAIR_TEMPLATE_PATTERN.search(flair_template)
     if not match:
         return
@@ -277,9 +327,19 @@ def set_flair(redditor, emails, letters, flair_template_obj):
     start_range, end_range = match.span(1)
     start_email, end_email = match.span(4)
     start_letters, end_letters = match.span(5)
-    new_flair_text = flair_template[:start_range] + flair_template[end_range:start_email] + str(emails) + flair_template[end_email:start_letters] + str(letters) + flair_template[end_letters:]
-    SUBREDDIT.flair.set(redditor, text=new_flair_text, flair_template_id=flair_template_obj["id"])
+    new_flair_text = (
+        flair_template[:start_range]
+        + flair_template[end_range:start_email]
+        + str(emails)
+        + flair_template[end_email:start_letters]
+        + str(letters)
+        + flair_template[end_letters:]
+    )
+    SUBREDDIT.flair.set(
+        redditor, text=new_flair_text, flair_template_id=flair_template_obj["id"]
+    )
     return new_flair_text
+
 
 def handle_catch_up():
     current_submission = get_current_confirmation_post()
@@ -292,6 +352,7 @@ def handle_catch_up():
         handle_confirmation_thread_comment(comment)
     LOGGER.info("Catch-up process finished")
 
+
 def handle_confirmation_thread_comment(comment):
     """Handles a comment left on the confirmation thread."""
     if not comment.is_root:
@@ -299,7 +360,7 @@ def handle_confirmation_thread_comment(comment):
         return
 
     all_matches = CONFIRMATION_PATTERN.findall(comment.body)
-    if (not len(all_matches)):
+    if not len(all_matches):
         comment.save()
         return
     for match in all_matches:
@@ -310,6 +371,7 @@ def handle_confirmation_thread_comment(comment):
             LOGGER.info(ex)
     comment.save()
 
+
 def handle_confirmation(comment, match):
     mentioned_name = match[0]
     emails = sint(match[1], 0)
@@ -317,9 +379,11 @@ def handle_confirmation(comment, match):
     mentioned_user = get_redditor(mentioned_name)
 
     if not mentioned_user:
-        comment.reply(USER_DOESNT_EXIST.format(comment=comment, mentioned_name=mentioned_name))
+        comment.reply(
+            USER_DOESNT_EXIST.format(comment=comment, mentioned_name=mentioned_name)
+        )
         return
-    
+
     if mentioned_user.id == comment.author.id:
         comment.reply(CANT_UPDATE_YOURSELF)
         return
@@ -327,13 +391,20 @@ def handle_confirmation(comment, match):
     old_flair, new_flair = increment_flair(mentioned_user, emails, letters)
     if not old_flair or not new_flair:
         return
-    
-    comment.reply(CONFIRMATION_TEMPLATE.format(mentioned_name=mentioned_name, old_flair=old_flair, new_flair=new_flair))
+
+    comment.reply(
+        CONFIRMATION_TEMPLATE.format(
+            mentioned_name=mentioned_name, old_flair=old_flair, new_flair=new_flair
+        )
+    )
+    LOGGER.info("Updated %s to %s for %s", old_flair, new_flair, mentioned_name)
+
 
 def handle_non_confirmation_thread_comment(comment):
     """Handles a comment left outside the confirmation thread."""
     comment.save()
     return
+
 
 def monitor_comments():
     """Comment monitoring function; loops infinitely."""
@@ -354,22 +425,38 @@ def monitor_comments():
             handle_confirmation_thread_comment(comment)
             continue
 
+
 if __name__ == "__main__":
     try:
         if len(sys.argv) > 1:
             if sys.argv[1] == "create-monthly":
+                # load globals for this route
+                MONTHLY_POST_FLAIR_ID = load_template("monthly_post_flair_id")
+
                 post_monthly_submission()
                 lock_previous_submissions()
         else:
             LOGGER.info("Bot start up")
             send_pushover_message(f"Bot startup for r/{SUBREDDIT_NAME}")
 
+            # load globals for this route
+            CONFIRMATION_PATTERN = re.compile(
+                load_template("confirmation_regex_pattern")
+            )
+            FLAIR_PATTERN = re.compile(load_template("flair_regex"))
+            FLAIR_TEMPLATE_PATTERN = re.compile(
+                load_template("ranged_flair_template_regex")
+            )
+            SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(
+                load_template("special_flair_template_regex")
+            )
             CONFIRMATION_TEMPLATE = load_template("confirmation_message")
             OLD_CONFIRMATION_THREAD = load_template("old_confirmation_thread")
             USER_DOESNT_EXIST = load_template("user_doesnt_exist")
             CANT_UPDATE_YOURSELF = load_template("cant_update_yourself")
             FLAIR_TEMPLATES, SPECIAL_FLAIR_TEMPLATES = load_flair_templates()
             CURRENT_MODS = [str(mod) for mod in SUBREDDIT.moderator()]
+
             handle_catch_up()
             monitor_comments()
     except Exception as main_exception:
