@@ -17,7 +17,7 @@ jobs:
       - name: Run pytest
         run: |
           pip install -r src/requirements.txt
-          pip install pytest
+          pip install pytest pytest-cov
           pytest --cov=./src --cov-report xml
       - name: Coveralls
         uses: coverallsapp/github-action@v2
