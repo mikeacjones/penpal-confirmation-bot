@@ -1,3 +1,5 @@
+[![Pytest](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test.yml/badge.svg)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test.yml)
+
 # Pen Pal Confirmation Bot v1
 
 ## About
