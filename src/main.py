@@ -307,21 +307,30 @@ if __name__ == "__main__":
                 try:
                     monitor_comments()
                     monitor_mail()
-                    error_count = 0
+
+                    error_count = 0  # no exceptions, reset error count
                 except prawcore.exceptions.ServerError:
                     # when the reddit apis start misbehaving, we don't need to just crash the app
-                    PUSHOVER.send_message(
-                        f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - Server Error from Reddit APIs. Sleeping for 1 minute before trying again."
-                    )
                     error_count += 1
-                    time.sleep(
-                        60 * min(error_count, 60)
-                    )  # sleep for at most 1 hour if the errors keep repeating
+                    PUSHOVER.send_message(
+                        f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - Server Error from Reddit APIs. Sleeping for {60 * min(error_count, 60)} minute before trying again."
+                    )
+                except prawcore.exceptions.TooManyRequests:
+                    # if we hit a 429 handle it and sleep instead of reloading the entire bot
+                    error_count += 1
+                    PUSHOVER.send_message(
+                        f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - 429 from Reddit APIs. Sleeping for {60 * min(error_count, 60)} seconds before trying again."
+                    )
+
+                time.sleep(
+                    1 + 60 * min(error_count, 60)
+                )  # sleep for at most 1 hour if the errors keep repeating
+                # always sleep for at least 1 seconds between loops
 
     except Exception as main_exception:
         LOGGER.exception("Main crashed")
         PUSHOVER.send_message(
-            f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}"
+            f"Main Crash for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - bot restarting"
         )
         PUSHOVER.send_message(str(main_exception))
         raise
