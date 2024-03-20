@@ -1,4 +1,4 @@
-[![Pytest](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test.yml/badge.svg)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test.yml) [![Coverage Status](https://coveralls.io/repos/github/mikeacjones/reddit-penpal-confirmation-bot/badge.svg?branch=unit-tests)](https://coveralls.io/github/mikeacjones/reddit-penpal-confirmation-bot?branch=unit-tests)
+[![Pytest (main)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test-and-deploy.yml/badge.svg?branch=main)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test-and-deploy.yml) [![Coverage Status (main)](https://coveralls.io/repos/github/mikeacjones/reddit-penpal-confirmation-bot/badge.svg?branch=main&kill_cache=1)](https://coveralls.io/github/mikeacjones/reddit-penpal-confirmation-bot?branch=main)
 
 # Pen Pal Confirmation Bot v1
 

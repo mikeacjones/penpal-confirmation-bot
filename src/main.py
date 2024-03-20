@@ -2,11 +2,11 @@ import os
 import sys
 import json
 import praw
-import prawcore.exceptions
+import prawcore
+import praw.exceptions
 import boto3
 import time
-from types import SimpleNamespace
-from datetime import datetime
+from datetime import datetime, timezone
 from helpers import sint, deEmojify
 from logger import LOGGER
 from bot import Bot
@@ -25,72 +25,16 @@ def load_secrets():
     return json.loads(secrets)
 
 
-def post_monthly_submission():
-    """Creates the monthly confirmation thread."""
-    previous_submission = get_current_confirmation_post()
-    now = datetime.utcnow()
-    if previous_submission:
-        submission_datetime = datetime.utcfromtimestamp(previous_submission.created_utc)
-        is_same_month_year = (
-            submission_datetime.year == now.year
-            and submission_datetime.month == now.month
-        )
-        if is_same_month_year:
-            LOGGER.info(
-                "Post monthly confirmation called and skipped; monthly post already exists"
-            )
-            return
-
-    monthly_post_flair_id = BOT.load_template("monthly_post_flair_id")
-    monthly_post_template = BOT.load_template("monthly_post")
-    monthly_post_title_template = BOT.load_template("monthly_post_title")
-    PUSHOVER.send_message(f"Creating monthly post for r/{SUBREDDIT_NAME}")
-
-    if previous_submission and previous_submission.stickied:
-        previous_submission.mod.sticky(state=False)
-
-    new_submission = BOT.SUBREDDIT.submit(
-        title=now.strftime(monthly_post_title_template),
-        selftext=monthly_post_template.format(
-            bot_name=BOT.BOT_NAME,
-            subreddit_name=SUBREDDIT_NAME,
-            previous_month_submission=previous_submission
-            or SimpleNamespace(
-                **{"title": "No Previous Confirmation Thread", "permalink": ""}
-            ),
-            now=now,
-        ),
-        flair_id=monthly_post_flair_id,
-        send_replies=False,
-    )
-    new_submission.mod.sticky(bottom=False)
-    new_submission.mod.suggested_sort(sort="new")
-    LOGGER.info(
-        "Created new monthly confirmation post: https://reddit.com%s",
-        new_submission.permalink,
-    )
-
-
-def lock_previous_submissions():
-    """Locks previous month posts."""
-    LOGGER.info("Locking previous submissions")
-    PUSHOVER.send_message(f"Locking previous month's posts for r/{SUBREDDIT_NAME}")
-    for submission in BOT.me.submissions.new(limit=10):
-        if submission.stickied:
-            continue
-        if not submission.locked:
-            LOGGER.info("Locking https://reddit.com%s", submission.permalink)
-            submission.mod.lock()
-
-
 def should_process_comment(comment):
     """Checks if a comment should be processed, returns a boolean."""
     # Checks if we should actually process a comment in our stream loop
     # fmt: off
     return (
         not comment.saved
-        and comment.author_fullname != BOT.fullname
+        and not comment.removed
         and comment.link_author == BOT.BOT_NAME
+        and hasattr(comment, "author_fullname")
+        and comment.author_fullname != BOT.fullname
         and comment.is_root
         and comment.banned_by is None
     )
@@ -104,14 +48,6 @@ def get_flair_template(total_count, user):
             if template["mod_only"] == (user in BOT.CURRENT_MODS):
                 return template
 
-    return None
-
-
-def get_current_confirmation_post():
-    for submission in BOT.me.submissions.new(limit=5):
-        if submission.subreddit.id == BOT.SUBREDDIT.id:
-            if submission.stickied:
-                return submission
     return None
 
 
@@ -191,7 +127,9 @@ def get_new_flair_text(ranges, emails, letters, flair_template_text):
 
 
 def handle_catch_up():
-    current_submission = get_current_confirmation_post()
+    current_submission = BOT.get_current_confirmation_post()
+    if not current_submission:
+        return
     current_submission.comment_sort = "new"
     current_submission.comments.replace_more(limit=None)
     LOGGER.info("Starting catch-up process")
@@ -283,45 +221,75 @@ def monitor_mail():
     return
 
 
+def bot_loop():
+    # infinite loop checks each stream for new items
+    error_count = 0
+    error_started = None
+
+    while True:
+        try:
+            monitor_comments()
+            monitor_mail()
+
+            if error_count >= 10:
+                PUSHOVER.send_message(
+                    f"Bot recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`"
+                )
+                BOT.send_message_to_mods(
+                    "Bot Recovered from Extended Outage",
+                    f"Bot has recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`",
+                )
+            error_count = 0  # no exceptions, reset error count
+            error_started = None
+        except (
+            praw.exceptions.PRAWException,
+            prawcore.exceptions.PrawcoreException,
+        ) as praw_error:
+            # when the reddit apis start misbehaving, we don't need to just crash the app
+            error_count += 1
+            if error_count == 1:
+                error_started = datetime.now(timezone.utc)
+            if error_count % 2 == 0:
+                BOT.reset_streams()  # the stream has to be reset when we're hitting exceptions because the listinggenerator has
+                # internal exceptions that will cause it to stop trying to yield without throwing any issues. In testing have
+                # found this happens after two exceptions on the two streams, so reset every 2 errors with the stream
+
+            LOGGER.exception(praw_error)
+            PUSHOVER.send_message(
+                f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - Server Error from Reddit APIs. Sleeping for {60 * min(error_count, 60)} minute before trying again."
+            )
+
+        time.sleep(
+            1 + (60 * min(error_count, 10))
+        )  # sleep for at most 1 hour if the errors keep repeating
+        # always sleep for at least 1 seconds between loops
+
+
 if __name__ == "__main__":
-    SUBREDDIT_NAME = os.getenv("SUBREDDIT_NAME")
+    SUBREDDIT_NAME = os.getenv("SUBREDDIT_NAME", "Unknown")
     SECRETS = load_secrets()
     PUSHOVER = Pushover(SECRETS["PUSHOVER_APP_TOKEN"], SECRETS["PUSHOVER_USER_TOKEN"])
     BOT = Bot(SECRETS, SUBREDDIT_NAME)
+    BOT.init()
 
     try:
         if len(sys.argv) > 1:
             if sys.argv[1] == "create-monthly":
-                post_monthly_submission()
-                lock_previous_submissions()
+                new_submission = BOT.post_monthly_submission()
+                BOT.lock_previous_submissions(new_submission)
+
+                LOGGER.info(f"New post: https://reddit.com{new_submission.permalink}")
+                PUSHOVER.send_message(f"Created monthly post for r/{SUBREDDIT_NAME}")
         else:
             LOGGER.info("Bot start up")
-            BOT.load_settings()
             PUSHOVER.send_message(f"Bot startup for r/{SUBREDDIT_NAME}")
 
+            BOT.load_settings()
             handle_catch_up()
-
-            # infinite loop checks each stream for new items
-            error_count = 0
-            while True:
-                try:
-                    monitor_comments()
-                    monitor_mail()
-                    error_count = 0
-                except prawcore.exceptions.ServerError:
-                    # when the reddit apis start misbehaving, we don't need to just crash the app
-                    PUSHOVER.send_message(
-                        f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - Server Error from Reddit APIs. Sleeping for 1 minute before trying again."
-                    )
-                    error_count += 1
-                    time.sleep(
-                        60 * min(error_count, 60)
-                    )  # sleep for at most 1 hour if the errors keep repeating
+            bot_loop()
 
     except Exception as main_exception:
         LOGGER.exception("Main crashed")
-        PUSHOVER.send_message(
-            f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}"
-        )
+        PUSHOVER.send_message(f"Main Crash for r/{SUBREDDIT_NAME}")
         PUSHOVER.send_message(str(main_exception))
         raise

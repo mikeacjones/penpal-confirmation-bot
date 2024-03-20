@@ -14,6 +14,7 @@ class Comment:
         self.banned_by = banned_by
         self.link_author = link_author
         self.saved = saved
+        self.removed = False
 
     def reply(self, body):
         if not body or body == "":

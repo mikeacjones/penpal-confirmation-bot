@@ -3,6 +3,25 @@ from mock_redditor import Redditor
 import main
 from main import get_new_flair_text
 from main import increment_flair
+from main import get_flair_template
+
+
+def test_get_flair_template_nonmod_good(BOT):
+    main.BOT = BOT
+    template = get_flair_template(10, Redditor("thisisreallytricky"))
+    assert template["id"] == "8c84163a-e078-11ee-a1a5-1e44362b6d8e"
+
+
+def test_get_flair_template_nonmod_none(BOT):
+    main.BOT = BOT
+    template = get_flair_template(9999, Redditor("thisisreallytricky"))
+    assert template == None
+
+
+def test_get_flair_template_mod_good(BOT):
+    main.BOT = BOT
+    template = get_flair_template(20, Redditor("newmod"))
+    assert template["id"] == "8c84163a-e078-11ee-a1a5-1e44362b6d8e"
 
 
 def test_get_new_flair_text_special(BOT):
