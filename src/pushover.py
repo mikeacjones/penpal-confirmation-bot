@@ -3,15 +3,7 @@ import urllib
 
 
 class Pushover:
-    _instance = None
-
-    def __new__(cls, APP_TOKEN, USER_TOKEN):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.initialize(APP_TOKEN, USER_TOKEN)
-        return cls._instance
-
-    def initialize(self, APP_TOKEN, USER_TOKEN):
+    def __init__(self, APP_TOKEN, USER_TOKEN):
         self.APP_TOKEN = APP_TOKEN
         self.USER_TOKEN = USER_TOKEN
 
@@ -30,4 +22,4 @@ class Pushover:
             ),
             {"Content-type": "application/x-www-form-urlencoded"},
         )
-        conn.getresponse()
+        return conn.getresponse()
