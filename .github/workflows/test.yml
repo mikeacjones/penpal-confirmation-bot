@@ -21,4 +21,5 @@ jobs:
           pytest --cov=./src --cov-report xml
       - name: Coveralls
         uses: coverallsapp/github-action@v2
-        path-to-lcov: coverage.xml
+        with:
+          path-to-lcov: coverage.xml
