@@ -176,3 +176,6 @@ class Bot:
             if not submission.locked:
                 LOGGER.info("Locking https://reddit.com%s", submission.permalink)
                 submission.mod.lock()
+
+    def send_message_to_mods(self, subject, message):
+        return self.SUBREDDIT.message(subject, message)
