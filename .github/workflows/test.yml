@@ -18,6 +18,7 @@ jobs:
         run: |
           pip install -r src/requirements.txt
           pip install pytest
-          pytest
+          pytest --cov=./src --cov-report xml
       - name: Coveralls
         uses: coverallsapp/github-action@v2
+        path-to-lcov: coverage.xml
