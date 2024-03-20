@@ -19,3 +19,5 @@ jobs:
           pip install -r src/requirements.txt
           pip install pytest
           pytest
+      - name: Coveralls
+        uses: coverallsapp/github-action@v2
