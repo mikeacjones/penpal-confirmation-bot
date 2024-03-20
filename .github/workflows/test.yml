@@ -1,0 +1,25 @@
+name: Pytest
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11.6'
+      - name: Run pytest
+        run: |
+          pip install -r src/requirements.txt
+          pip install pytest pytest-cov
+          pytest --cov=./src --cov-report xml
+      - name: Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          path-to-lcov: coverage.xml

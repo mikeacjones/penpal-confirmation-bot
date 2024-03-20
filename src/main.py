@@ -6,8 +6,8 @@ import prawcore.exceptions
 import boto3
 import time
 from types import SimpleNamespace
-from helpers import sint, deEmojify
 from datetime import datetime
+from helpers import sint, deEmojify
 from logger import LOGGER
 from bot import Bot
 from pushover import Pushover
@@ -23,12 +23,6 @@ def load_secrets():
         )
         secrets = secrets_response["SecretString"]
     return json.loads(secrets)
-
-
-SUBREDDIT_NAME = os.getenv("SUBREDDIT_NAME")
-SECRETS = load_secrets()
-PUSHOVER = Pushover(SECRETS["PUSHOVER_APP_TOKEN"], SECRETS["PUSHOVER_USER_TOKEN"])
-BOT = Bot(SECRETS, SUBREDDIT_NAME)
 
 
 def post_monthly_submission():
@@ -102,11 +96,6 @@ def should_process_comment(comment):
     )
 
 
-def get_current_flair(redditor):
-    """Uses an API call to ensure we have the latest flair text"""
-    return next(BOT.SUBREDDIT.flair(redditor))
-
-
 def get_flair_template(total_count, user):
     """Retrieves the appropriate flair template, returned as an object."""
     for (min_count, max_count), template in BOT.FLAIR_TEMPLATES.items():
@@ -118,18 +107,6 @@ def get_flair_template(total_count, user):
     return None
 
 
-def get_special_flair(current_flair_text, current_emails, current_letters):
-    for template in BOT.SPECIAL_FLAIR_TEMPLATES:
-        flair_text = (
-            template["text"]
-            .replace("{E}", current_emails)
-            .replace("{L}", current_letters)
-        )
-        if flair_text == current_flair_text:
-            return template
-    return None
-
-
 def get_current_confirmation_post():
     for submission in BOT.me.submissions.new(limit=5):
         if submission.subreddit.id == BOT.SUBREDDIT.id:
@@ -138,100 +115,77 @@ def get_current_confirmation_post():
     return None
 
 
-def get_redditor(name):
-    try:
-        redditor = BOT.REDDIT.redditor(name)
-        if redditor.id:
-            return redditor
-    except prawcore.exceptions.NotFound:
-        return None
-    return None
-
-
 def increment_flair(redditor, new_emails, new_letters):
-    current_flair = get_current_flair(redditor)
-    current_flair_text = current_flair["flair_text"]
+    current_flair = BOT.get_current_flair(redditor)
+    current_flair_text = current_flair["flair_text"] if current_flair else None
     if current_flair_text is None or current_flair_text == "":
-        new_flair_obj = get_flair_template(new_emails + new_letters, redditor)
-        return ("No Flair", set_flair(redditor, new_emails, new_letters, new_flair_obj))
+        current_flair_text = "No Flair"
+        new_total = new_emails + new_letters
+    else:
+        match = BOT.FLAIR_PATTERN.search(current_flair_text)
+        if not match:
+            return (None, None)
 
-    match = BOT.FLAIR_PATTERN.search(current_flair_text)
-    if not match:
-        return (None, None)
+        current_emails, current_letters = match.groups()
+        new_emails += sint(current_emails, 0)
+        new_letters += sint(current_letters, 0)
+        new_total = new_emails + new_letters
 
-    current_emails = match.group(1)
-    current_letters = match.group(2)
-    new_emails += sint(current_emails, 0)
-    new_letters += sint(current_letters, 0)
-    new_total = new_emails + new_letters
-
-    if current_flair["flair_css_class"] in BOT.SPECIAL_FLAIR_TEMPLATES:
-        return (
-            current_flair_text,
-            set_special_flair(
-                redditor,
-                new_emails,
-                new_letters,
-                BOT.SPECIAL_FLAIR_TEMPLATES[current_flair["flair_css_class"]],
-            ),
+    new_flair_text = ""
+    if (
+        current_flair
+        and current_flair["flair_css_class"] in BOT.SPECIAL_FLAIR_TEMPLATES
+    ):
+        flair_template_obj = BOT.SPECIAL_FLAIR_TEMPLATES[
+            current_flair["flair_css_class"]
+        ]
+        match = BOT.SPECIAL_FLAIR_TEMPLATE_PATTERN.search(flair_template_obj["text"])
+        if not match:
+            return (None, None)
+        new_flair_text = get_new_flair_text(
+            [match.span(1), match.span(2)],
+            new_emails,
+            new_letters,
+            flair_template_obj["text"],
+        )
+    else:
+        flair_template_obj = get_flair_template(new_total, redditor)
+        if not flair_template_obj:
+            return (None, None)
+        match = BOT.FLAIR_TEMPLATE_PATTERN.search(flair_template_obj["text"])
+        if not match:
+            return (None, None)
+        new_flair_text = get_new_flair_text(
+            [match.span(1), match.span(4), match.span(5)],
+            new_emails,
+            new_letters,
+            flair_template_obj["text"],
         )
 
-    new_flair_obj = get_flair_template(new_total, redditor)
-    if not new_flair_obj:
-        return (None, None)
+    if new_flair_text == "":
+        return (current_flair_text, None)
 
+    BOT.set_redditor_flair(redditor, new_flair_text, flair_template_obj)
     return (
         current_flair_text,
-        set_flair(redditor, new_emails, new_letters, new_flair_obj),
+        new_flair_text,
     )
 
 
-def set_special_flair(redditor, emails, letters, flair_template_obj):
-    flair_template = flair_template_obj["text"]
-    if not flair_template:
-        return
+def get_new_flair_text(ranges, emails, letters, flair_template_text):
+    if len(ranges) < 3:
+        ranges.insert(0, [0, 0])
+    (start_range, end_range), (start_email, end_email), (start_letters, end_letters) = (
+        ranges
+    )
 
-    match = BOT.SPECIAL_FLAIR_TEMPLATE_PATTERN.search(flair_template)
-    if not match:
-        return
-
-    start_email, end_email = match.span(1)
-    start_letters, end_letters = match.span(2)
     new_flair_text = (
-        flair_template[:start_email]
+        flair_template_text[:start_range]
+        + flair_template_text[end_range:start_email]
         + str(emails)
-        + flair_template[end_email:start_letters]
+        + flair_template_text[end_email:start_letters]
         + str(letters)
-        + flair_template[end_letters:]
-    )
-    BOT.SUBREDDIT.flair.set(
-        redditor, text=new_flair_text, flair_template_id=flair_template_obj["id"]
-    )
-    return new_flair_text
-
-
-def set_flair(redditor, emails, letters, flair_template_obj):
-    flair_template = flair_template_obj["text"]
-    if not flair_template:
-        return
-
-    match = BOT.FLAIR_TEMPLATE_PATTERN.search(flair_template)
-    if not match:
-        return
-
-    start_range, end_range = match.span(1)
-    start_email, end_email = match.span(4)
-    start_letters, end_letters = match.span(5)
-    new_flair_text = (
-        flair_template[:start_range]
-        + flair_template[end_range:start_email]
-        + str(emails)
-        + flair_template[end_email:start_letters]
-        + str(letters)
-        + flair_template[end_letters:]
-    )
-    BOT.SUBREDDIT.flair.set(
-        redditor, text=new_flair_text, flair_template_id=flair_template_obj["id"]
+        + flair_template_text[end_letters:]
     )
     return new_flair_text
 
@@ -265,13 +219,13 @@ def handle_confirmation_thread_comment(comment):
     comment.save()
     if reply_body != "":
         comment.reply(reply_body)
+    return reply_body
 
 
 def handle_confirmation(comment, match):
-    mentioned_name = match[0]
-    emails = sint(match[1], 0)
-    letters = sint(match[2], 0)
-    mentioned_user = get_redditor(mentioned_name)
+    mentioned_name, emails, letters = match
+    emails, letters = sint(emails, 0), sint(letters, 0)
+    mentioned_user = BOT.get_redditor(mentioned_name)
 
     if not mentioned_user:
         return BOT.USER_DOESNT_EXIST.format(
@@ -330,6 +284,11 @@ def monitor_mail():
 
 
 if __name__ == "__main__":
+    SUBREDDIT_NAME = os.getenv("SUBREDDIT_NAME")
+    SECRETS = load_secrets()
+    PUSHOVER = Pushover(SECRETS["PUSHOVER_APP_TOKEN"], SECRETS["PUSHOVER_USER_TOKEN"])
+    BOT = Bot(SECRETS, SUBREDDIT_NAME)
+
     try:
         if len(sys.argv) > 1:
             if sys.argv[1] == "create-monthly":

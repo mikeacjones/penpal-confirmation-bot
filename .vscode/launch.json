@@ -8,7 +8,7 @@
       "name": "Python: Debug Comment Handler",
       "type": "python",
       "request": "launch",
-      "program": "${file}",
+      "program": "${workspaceFolder}/src/main.py",
       "console": "integratedTerminal",
       "justMyCode": true,
       "envFile": "${workspaceFolder}/.env",
@@ -17,13 +17,22 @@
       "name": "Python: Debug Create Monthly",
       "type": "python",
       "request": "launch",
-      "program": "${file}",
+      "program": "${workspaceFolder}/src/main.py",
       "console": "integratedTerminal",
       "justMyCode": true,
       "envFile": "${workspaceFolder}/.env",
       "args": [
         "create-monthly"
       ]
+    },
+    {
+      "name": "Python: Debug Unit Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/.env",
     }
   ]
 }

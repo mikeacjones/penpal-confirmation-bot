@@ -1,7 +1,6 @@
 import re
 import praw
 import prawcore
-import logging
 from logger import LOGGER
 from helpers import sint
 
@@ -95,3 +94,21 @@ class Bot:
                     special_templates[template["id"]] = template
                     LOGGER.info(f"Loaded special flair template `{template['text']}`")
         return (flair_templates, special_templates)
+
+    def set_redditor_flair(self, redditor, new_flair_text, flair_template):
+        self.SUBREDDIT.flair.set(
+            redditor, text=new_flair_text, flair_template_id=flair_template["id"]
+        )
+
+    def get_current_flair(self, redditor):
+        """Uses an API call to ensure we have the latest flair text"""
+        return next(self.SUBREDDIT.flair(redditor))
+
+    def get_redditor(self, name):
+        try:
+            redditor = self.REDDIT.redditor(name)
+            if redditor.id:
+                return redditor
+        except prawcore.exceptions.NotFound:
+            return None
+        return None
