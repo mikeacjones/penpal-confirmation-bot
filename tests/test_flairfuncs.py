@@ -23,7 +23,7 @@ def test_get_new_flair_text_ranged(BOT):
         get_new_flair_text(
             [match.span(1), match.span(4), match.span(5)], 5, 5, template
         )
-        == "📧 Emails: 5 | 📬 Letters: 5",
+        == "📧 Emails: 5 | 📬 Letters: 5"
     )
 
 

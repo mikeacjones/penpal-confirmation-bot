@@ -56,7 +56,7 @@ def test_handle_confirmation_ranged_ok(BOT):
     result = handle_confirmation(comment, matches)
     assert (
         result
-        == "> `u/thisisreallytricky` updated from ` Emails: 1 |  Letters: 1` to ` Emails: 6 |  Letters: 6`",
+        == "> `u/thisisreallytricky` updated from ` Emails: 1 |  Letters: 1` to ` Emails: 6 |  Letters: 6`"
     )
 
 
