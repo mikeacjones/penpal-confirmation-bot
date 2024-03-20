@@ -19,6 +19,11 @@ jobs:
           pip install -r src/requirements.txt
           pip install pytest pytest-cov
           pytest --cov=./src --cov-report xml
+        env:
+          PUSHOVER_APP_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
+          PUSHOVER_USER_TOKEN: ${{ secrets.PUSHOVER_USER_TOKEN }}
+          DEV: true
+          SECRETS: ${{ secrets.SECRETS }}
       - name: Coveralls
         uses: coverallsapp/github-action@v2
         with:
