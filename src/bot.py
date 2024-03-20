@@ -1,6 +1,9 @@
 import re
 import praw
 import prawcore
+import datetime
+from types import SimpleNamespace
+
 from logger import LOGGER
 from helpers import sint
 
@@ -15,9 +18,10 @@ class Bot:
         return cls._instance
 
     def initialize(self, SECRETS, SUBREDDIT_NAME):
-        self.configure_reddit(SECRETS, SUBREDDIT_NAME)
+        self.SUBREDDIT_NAME = SUBREDDIT_NAME
+        self.configure_reddit(SECRETS)
 
-    def configure_reddit(self, SECRETS, SUBREDDIT_NAME):
+    def configure_reddit(self, SECRETS):
         self.REDDIT = praw.Reddit(
             client_id=SECRETS["REDDIT_CLIENT_ID"],
             client_secret=SECRETS["REDDIT_CLIENT_SECRET"],
@@ -25,7 +29,7 @@ class Bot:
             username=SECRETS["REDDIT_USERNAME"],
             password=SECRETS["REDDIT_PASSWORD"],
         )
-        self.SUBREDDIT = self.REDDIT.subreddit(SUBREDDIT_NAME)
+        self.SUBREDDIT = self.REDDIT.subreddit(self.SUBREDDIT_NAME)
         self.me = self.REDDIT.user.me()
         self.id = self.me.id
         self.fullname = self.me.fullname
@@ -112,3 +116,63 @@ class Bot:
         except prawcore.exceptions.NotFound:
             return None
         return None
+
+    def get_current_confirmation_post(self):
+        for submission in self.me.submissions.new(limit=5):
+            if submission.subreddit.id == self.SUBREDDIT.id:
+                if submission.stickied:
+                    return submission
+        return None
+
+    def post_monthly_submission(self):
+        """Creates the monthly confirmation thread."""
+        previous_submission = self.get_current_confirmation_post()
+        now = datetime.utcnow()
+        if previous_submission:
+            submission_datetime = datetime.utcfromtimestamp(
+                previous_submission.created_utc
+            )
+            is_same_month_year = (
+                submission_datetime.year == now.year
+                and submission_datetime.month == now.month
+            )
+            if is_same_month_year:
+                LOGGER.info(
+                    "Post monthly confirmation called and skipped; monthly post already exists"
+                )
+                return
+
+        monthly_post_flair_id = self.load_template("monthly_post_flair_id")
+        monthly_post_template = self.load_template("monthly_post")
+        monthly_post_title_template = self.load_template("monthly_post_title")
+
+        if previous_submission and previous_submission.stickied:
+            previous_submission.mod.sticky(state=False)
+
+        new_submission = self.SUBREDDIT.submit(
+            title=now.strftime(monthly_post_title_template),
+            selftext=monthly_post_template.format(
+                bot_name=self.BOT_NAME,
+                subreddit_name=self.SUBREDDIT_NAME,
+                previous_month_submission=previous_submission
+                or SimpleNamespace(
+                    **{"title": "No Previous Confirmation Thread", "permalink": ""}
+                ),
+                now=now,
+            ),
+            flair_id=monthly_post_flair_id,
+            send_replies=False,
+        )
+        new_submission.mod.sticky(bottom=False)
+        new_submission.mod.suggested_sort(sort="new")
+        return new_submission
+
+    def lock_previous_submissions(self):
+        """Locks previous month posts."""
+        LOGGER.info("Locking previous submissions")
+        for submission in self.me.submissions.new(limit=10):
+            if submission.stickied:
+                continue
+            if not submission.locked:
+                LOGGER.info("Locking https://reddit.com%s", submission.permalink)
+                submission.mod.lock()
