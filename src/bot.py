@@ -37,6 +37,10 @@ class Bot:
         self.comment_stream = self.SUBREDDIT.stream.comments(pause_after=-1)
         self.BOT_NAME = self.me.name
 
+    def reset_streams(self):
+        self.inbox_stream = self.REDDIT.inbox.stream(pause_after=-1)
+        self.comment_stream = self.SUBREDDIT.stream.comments(pause_after=-1)
+
     def load_settings(self):
         self.CONFIRMATION_PATTERN = re.compile(
             self.load_template("confirmation_regex_pattern")

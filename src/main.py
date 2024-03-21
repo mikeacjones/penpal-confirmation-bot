@@ -2,10 +2,10 @@ import os
 import sys
 import json
 import praw
-import prawcore.exceptions
+import prawcore
+import praw.exceptions
 import boto3
 import time
-from types import SimpleNamespace
 from datetime import datetime, timezone
 from helpers import sint, deEmojify
 from logger import LOGGER
@@ -243,41 +243,42 @@ if __name__ == "__main__":
             # infinite loop checks each stream for new items
             error_count = 0
             error_started = None
+
             while True:
                 try:
                     monitor_comments()
                     monitor_mail()
 
-                    if error_count >= 60:
+                    if error_count >= 10:
                         PUSHOVER.send_message(
                             f"Bot recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`"
                         )
                         BOT.send_message_to_mods(
-                            f"Bot has recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`"
+                            "Bot Recovered from Extended Outage",
+                            f"Bot has recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`",
                         )
                     error_count = 0  # no exceptions, reset error count
                     error_started = None
-                except prawcore.exceptions.ServerError:
+                except (
+                    praw.exceptions.PRAWException,
+                    prawcore.exceptions.PrawcoreException,
+                ) as praw_error:
                     # when the reddit apis start misbehaving, we don't need to just crash the app
                     error_count += 1
                     if error_count == 1:
                         error_started = datetime.now(timezone.utc)
+                    if error_count % 2 == 0:
+                        BOT.reset_streams()  # the stream has to be reset when we're hitting exceptions because the listinggenerator has
+                        # internal exceptions that will cause it to stop trying to yield without throwing any issues. In testing have
+                        # found this happens after two exceptions on the two streams, so reset every 2 errors with the stream
 
+                    LOGGER.exception(praw_error)
                     PUSHOVER.send_message(
                         f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - Server Error from Reddit APIs. Sleeping for {60 * min(error_count, 60)} minute before trying again."
                     )
-                except prawcore.exceptions.TooManyRequests:
-                    # if we hit a 429 handle it and sleep instead of reloading the entire bot
-                    error_count += 1
-                    if error_count == 1:
-                        error_started = datetime.now(timezone.utc)
-
-                    PUSHOVER.send_message(
-                        f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - 429 from Reddit APIs. Sleeping for {60 * min(error_count, 60)} seconds before trying again."
-                    )
 
                 time.sleep(
-                    1 + 60 * min(error_count, 60)
+                    1 + (60 * min(error_count, 10))
                 )  # sleep for at most 1 hour if the errors keep repeating
                 # always sleep for at least 1 seconds between loops
 
