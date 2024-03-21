@@ -217,8 +217,52 @@ def monitor_mail():
     return
 
 
+def bot_loop():
+    # infinite loop checks each stream for new items
+    error_count = 0
+    error_started = None
+
+    while True:
+        try:
+            monitor_comments()
+            monitor_mail()
+
+            if error_count >= 10:
+                PUSHOVER.send_message(
+                    f"Bot recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`"
+                )
+                BOT.send_message_to_mods(
+                    "Bot Recovered from Extended Outage",
+                    f"Bot has recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`",
+                )
+            error_count = 0  # no exceptions, reset error count
+            error_started = None
+        except (
+            praw.exceptions.PRAWException,
+            prawcore.exceptions.PrawcoreException,
+        ) as praw_error:
+            # when the reddit apis start misbehaving, we don't need to just crash the app
+            error_count += 1
+            if error_count == 1:
+                error_started = datetime.now(timezone.utc)
+            if error_count % 2 == 0:
+                BOT.reset_streams()  # the stream has to be reset when we're hitting exceptions because the listinggenerator has
+                # internal exceptions that will cause it to stop trying to yield without throwing any issues. In testing have
+                # found this happens after two exceptions on the two streams, so reset every 2 errors with the stream
+
+            LOGGER.exception(praw_error)
+            PUSHOVER.send_message(
+                f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - Server Error from Reddit APIs. Sleeping for {60 * min(error_count, 60)} minute before trying again."
+            )
+
+        time.sleep(
+            1 + (60 * min(error_count, 10))
+        )  # sleep for at most 1 hour if the errors keep repeating
+        # always sleep for at least 1 seconds between loops
+
+
 if __name__ == "__main__":
-    SUBREDDIT_NAME = os.getenv("SUBREDDIT_NAME")
+    SUBREDDIT_NAME = os.getenv("SUBREDDIT_NAME", "Unknown")
     SECRETS = load_secrets()
     PUSHOVER = Pushover(SECRETS["PUSHOVER_APP_TOKEN"], SECRETS["PUSHOVER_USER_TOKEN"])
     BOT = Bot(SECRETS, SUBREDDIT_NAME)
@@ -228,64 +272,19 @@ if __name__ == "__main__":
             if sys.argv[1] == "create-monthly":
                 new_submission = BOT.post_monthly_submission()
                 BOT.lock_previous_submissions()
-                LOGGER.info(
-                    "Created new monthly confirmation post: https://reddit.com%s",
-                    new_submission.permalink,
-                )
+
+                LOGGER.info(f"New post: https://reddit.com{new_submission.permalink}")
                 PUSHOVER.send_message(f"Created monthly post for r/{SUBREDDIT_NAME}")
         else:
             LOGGER.info("Bot start up")
-            BOT.load_settings()
             PUSHOVER.send_message(f"Bot startup for r/{SUBREDDIT_NAME}")
 
+            BOT.load_settings()
             handle_catch_up()
-
-            # infinite loop checks each stream for new items
-            error_count = 0
-            error_started = None
-
-            while True:
-                try:
-                    monitor_comments()
-                    monitor_mail()
-
-                    if error_count >= 10:
-                        PUSHOVER.send_message(
-                            f"Bot recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`"
-                        )
-                        BOT.send_message_to_mods(
-                            "Bot Recovered from Extended Outage",
-                            f"Bot has recovered from extended outage that lasted for an hour or more for r/{os.getenv('SUBREDDIT_NAME', 'unknown')}\n\nOutage started at: `{error_started}`",
-                        )
-                    error_count = 0  # no exceptions, reset error count
-                    error_started = None
-                except (
-                    praw.exceptions.PRAWException,
-                    prawcore.exceptions.PrawcoreException,
-                ) as praw_error:
-                    # when the reddit apis start misbehaving, we don't need to just crash the app
-                    error_count += 1
-                    if error_count == 1:
-                        error_started = datetime.now(timezone.utc)
-                    if error_count % 2 == 0:
-                        BOT.reset_streams()  # the stream has to be reset when we're hitting exceptions because the listinggenerator has
-                        # internal exceptions that will cause it to stop trying to yield without throwing any issues. In testing have
-                        # found this happens after two exceptions on the two streams, so reset every 2 errors with the stream
-
-                    LOGGER.exception(praw_error)
-                    PUSHOVER.send_message(
-                        f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - Server Error from Reddit APIs. Sleeping for {60 * min(error_count, 60)} minute before trying again."
-                    )
-
-                time.sleep(
-                    1 + (60 * min(error_count, 10))
-                )  # sleep for at most 1 hour if the errors keep repeating
-                # always sleep for at least 1 seconds between loops
+            bot_loop()
 
     except Exception as main_exception:
         LOGGER.exception("Main crashed")
-        PUSHOVER.send_message(
-            f"Main Crash for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - bot restarting"
-        )
+        PUSHOVER.send_message(f"Main Crash for r/{SUBREDDIT_NAME}")
         PUSHOVER.send_message(str(main_exception))
         raise
