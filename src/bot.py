@@ -1,7 +1,7 @@
 import re
 import praw
 import prawcore
-import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from logger import LOGGER
@@ -131,10 +131,10 @@ class Bot:
     def post_monthly_submission(self):
         """Creates the monthly confirmation thread."""
         previous_submission = self.get_current_confirmation_post()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if previous_submission:
-            submission_datetime = datetime.utcfromtimestamp(
-                previous_submission.created_utc
+            submission_datetime = datetime.fromtimestamp(
+                previous_submission.created_utc, timezone.utc
             )
             is_same_month_year = (
                 submission_datetime.year == now.year
