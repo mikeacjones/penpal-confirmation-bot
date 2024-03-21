@@ -17,7 +17,7 @@ jobs:
       - name: Run pytest
         run: |
           pip install -r src/requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov betamax betamax-serializers
           pytest --cov=./src --cov-report xml
         env:
           PUSHOVER_APP_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
