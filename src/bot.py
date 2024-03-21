@@ -182,4 +182,8 @@ class Bot:
                 submission.mod.lock()
 
     def send_message_to_mods(self, subject, message):
-        return self.SUBREDDIT.message(subject, message)
+        # changed how we send the modmail so that it because an archivable message
+        # mod discussions can't be archived which is annoying
+        return self.SUBREDDIT.modmail.create(
+            subject=subject, body=message, recipient=self.me
+        )
