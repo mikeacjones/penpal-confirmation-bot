@@ -20,10 +20,9 @@ jobs:
           pip install pytest pytest-cov betamax betamax-serializers
           pytest --cov=./src --cov-report xml
         env:
-          PUSHOVER_APP_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
-          PUSHOVER_USER_TOKEN: ${{ secrets.PUSHOVER_USER_TOKEN }}
           DEV: true
           SECRETS: ${{ secrets.SECRETS }}
+          SUBREDDIT_NAME: 'penpalbotdev'
       - name: Coveralls
         uses: coverallsapp/github-action@v2
         with:

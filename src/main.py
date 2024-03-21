@@ -126,6 +126,8 @@ def get_new_flair_text(ranges, emails, letters, flair_template_text):
 
 def handle_catch_up():
     current_submission = BOT.get_current_confirmation_post()
+    if not current_submission:
+        return
     current_submission.comment_sort = "new"
     current_submission.comments.replace_more(limit=None)
     LOGGER.info("Starting catch-up process")
@@ -266,12 +268,13 @@ if __name__ == "__main__":
     SECRETS = load_secrets()
     PUSHOVER = Pushover(SECRETS["PUSHOVER_APP_TOKEN"], SECRETS["PUSHOVER_USER_TOKEN"])
     BOT = Bot(SECRETS, SUBREDDIT_NAME)
+    BOT.init()
 
     try:
         if len(sys.argv) > 1:
             if sys.argv[1] == "create-monthly":
                 new_submission = BOT.post_monthly_submission()
-                BOT.lock_previous_submissions()
+                BOT.lock_previous_submissions(new_submission)
 
                 LOGGER.info(f"New post: https://reddit.com{new_submission.permalink}")
                 PUSHOVER.send_message(f"Created monthly post for r/{SUBREDDIT_NAME}")

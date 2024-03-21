@@ -2,6 +2,8 @@ from betamax.cassette import cassette
 from betamax import Betamax
 from main import load_secrets
 import base64
+import json
+import urllib.parse
 
 
 def sanitize_cassette(interaction, current_cassette):
@@ -9,6 +11,15 @@ def sanitize_cassette(interaction, current_cassette):
     # only time we want to look for Authorization-Token headers
     if interaction.data["response"]["status"]["code"] != 200:
         return
+
+    body = interaction.data["response"]["body"]["string"]
+    if "access_token" in body:
+        body = json.loads(body)
+        current_cassette.placeholders.append(
+            cassette.Placeholder(
+                placeholder=f"<ACCESS-TOKEN>", replace=body["access_token"]
+            )
+        )
 
     for headers in [
         interaction.data["request"]["headers"],
@@ -43,6 +54,10 @@ with Betamax.configure() as config:
                 secrets["REDDIT_USERNAME"], secrets["REDDIT_PASSWORD"]
             ).encode("utf-8")
         ).decode("utf-8"),
+    )
+    config.define_cassette_placeholder("<REDDIT-USERNAME>", secrets["REDDIT_USERNAME"])
+    config.define_cassette_placeholder(
+        "<REDDIT-PASSWORD>", urllib.parse.quote(secrets["REDDIT_PASSWORD"])
     )
     config.define_cassette_placeholder(
         "<REDDIT-CLIENT-ID>", secrets["REDDIT_CLIENT_ID"]

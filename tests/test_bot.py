@@ -1,6 +1,7 @@
 import os
 from bot import Bot
 import main
+import pytest
 from main import load_secrets
 from main import handle_catch_up
 from betamax import Betamax
@@ -8,7 +9,15 @@ import betamax_helpers
 
 secrets = load_secrets()
 BOT = Bot(secrets, os.environ["SUBREDDIT_NAME"])
-recorder = Betamax(BOT.REDDIT._core._requestor._http)
+
+http = BOT.REDDIT._core._requestor._http
+http.headers["Accept-Encoding"] = "identity"
+recorder = Betamax(http)
+
+
+def test_init():
+    with recorder.use_cassette("test_init"):
+        BOT.init()
 
 
 def test_load_settings():
@@ -18,9 +27,9 @@ def test_load_settings():
 
 def test_post_monthly_submission():
     with recorder.use_cassette("test_post_monthly_submission"):
-        BOT.post_monthly_submission()
+        new_submission = BOT.post_monthly_submission()
     with recorder.use_cassette("test_lock_previous_submissions"):
-        BOT.lock_previous_submissions()
+        BOT.lock_previous_submissions(new_submission)
 
 
 def test_send_message_to_mods():

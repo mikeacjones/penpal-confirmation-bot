@@ -19,9 +19,6 @@ class Bot:
 
     def initialize(self, SECRETS, SUBREDDIT_NAME):
         self.SUBREDDIT_NAME = SUBREDDIT_NAME
-        self.configure_reddit(SECRETS)
-
-    def configure_reddit(self, SECRETS):
         self.REDDIT = praw.Reddit(
             client_id=SECRETS["REDDIT_CLIENT_ID"],
             client_secret=SECRETS["REDDIT_CLIENT_SECRET"],
@@ -29,6 +26,8 @@ class Bot:
             username=SECRETS["REDDIT_USERNAME"],
             password=SECRETS["REDDIT_PASSWORD"],
         )
+
+    def init(self):
         self.SUBREDDIT = self.REDDIT.subreddit(self.SUBREDDIT_NAME)
         self.me = self.REDDIT.user.me()
         self.id = self.me.id
@@ -168,14 +167,15 @@ class Bot:
             send_replies=False,
         )
         new_submission.mod.sticky(bottom=False)
+        new_submission.stickied = True
         new_submission.mod.suggested_sort(sort="new")
         return new_submission
 
-    def lock_previous_submissions(self):
+    def lock_previous_submissions(self, exempt_submission):
         """Locks previous month posts."""
         LOGGER.info("Locking previous submissions")
         for submission in self.me.submissions.new(limit=10):
-            if submission.stickied:
+            if submission == exempt_submission:
                 continue
             if not submission.locked:
                 LOGGER.info("Locking https://reddit.com%s", submission.permalink)
