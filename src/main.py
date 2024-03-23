@@ -40,8 +40,13 @@ def should_process_comment(comment):
     )
 
 
-def get_flair_template(total_count, user):
+def get_flair_template(total_count, user, current_flair):
     """Retrieves the appropriate flair template, returned as an object."""
+    if (
+        current_flair
+        and current_flair["flair_css_class"] in BOT.SPECIAL_FLAIR_TEMPLATES
+    ):
+        return BOT.SPECIAL_FLAIR_TEMPLATES[current_flair["flair_css_class"]]
     for (min_count, max_count), template in BOT.FLAIR_TEMPLATES.items():
         if min_count <= total_count <= max_count:
             # if a flair template was marked mod only, enforce that. Allows flairs like "Moderator | Trades min-max"
@@ -67,63 +72,13 @@ def increment_flair(redditor, new_emails, new_letters):
         new_letters += sint(current_letters, 0)
         new_total = new_emails + new_letters
 
-    new_flair_text = ""
-    if (
-        current_flair
-        and current_flair["flair_css_class"] in BOT.SPECIAL_FLAIR_TEMPLATES
-    ):
-        flair_template_obj = BOT.SPECIAL_FLAIR_TEMPLATES[
-            current_flair["flair_css_class"]
-        ]
-        match = BOT.SPECIAL_FLAIR_TEMPLATE_PATTERN.search(flair_template_obj["text"])
-        if not match:
-            return (None, None)
-        new_flair_text = get_new_flair_text(
-            [match.span(1), match.span(2)],
-            new_emails,
-            new_letters,
-            flair_template_obj["text"],
-        )
-    else:
-        flair_template_obj = get_flair_template(new_total, redditor)
-        if not flair_template_obj:
-            return (None, None)
-        match = BOT.FLAIR_TEMPLATE_PATTERN.search(flair_template_obj["text"])
-        if not match:
-            return (None, None)
-        new_flair_text = get_new_flair_text(
-            [match.span(1), match.span(4), match.span(5)],
-            new_emails,
-            new_letters,
-            flair_template_obj["text"],
-        )
+    new_flair_template = get_flair_template(new_total, redditor, current_flair)
+    if not new_flair_template:
+        return (None, None)
 
-    if new_flair_text == "":
-        return (current_flair_text, None)
-
-    BOT.set_redditor_flair(redditor, new_flair_text, flair_template_obj)
-    return (
-        current_flair_text,
-        new_flair_text,
-    )
-
-
-def get_new_flair_text(ranges, emails, letters, flair_template_text):
-    if len(ranges) < 3:
-        ranges.insert(0, [0, 0])
-    (start_range, end_range), (start_email, end_email), (start_letters, end_letters) = (
-        ranges
-    )
-
-    new_flair_text = (
-        flair_template_text[:start_range]
-        + flair_template_text[end_range:start_email]
-        + str(emails)
-        + flair_template_text[end_email:start_letters]
-        + str(letters)
-        + flair_template_text[end_letters:]
-    )
-    return new_flair_text
+    new_flair_text = new_flair_template["text"].format(E=new_emails, L=new_letters)
+    BOT.set_redditor_flair(redditor, new_flair_text, new_flair_template)
+    return (current_flair_text, new_flair_text)
 
 
 def handle_catch_up():

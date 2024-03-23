@@ -1,9 +1,11 @@
 from betamax.cassette import cassette
 from betamax import Betamax
 from main import load_secrets
+from bot import Bot
 import base64
 import json
 import urllib.parse
+import os
 
 
 def sanitize_cassette(interaction, current_cassette):
@@ -65,3 +67,8 @@ with Betamax.configure() as config:
     config.define_cassette_placeholder(
         "<REDDIT-CLIENT-SECRET>", secrets["REDDIT_CLIENT_SECRET"]
     )
+
+BOT = Bot(secrets, os.environ["SUBREDDIT_NAME"])
+http = BOT.REDDIT._core._requestor._http
+http.headers["Accept-Encoding"] = "identity"
+RECORDER = Betamax(http)

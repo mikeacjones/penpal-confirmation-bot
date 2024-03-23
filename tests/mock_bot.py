@@ -27,10 +27,10 @@ class Bot:
             r"📧 Emails: (\d+|{E}) \| 📬 Letters: (\d+|{L})"
         )
         self.FLAIR_TEMPLATE_PATTERN = re.compile(
-            r"((\d+)-(\d+):)📧 Emails: ({E}) \| 📬 Letters: ({L})"
+            r"((\d+)-(\d+):)📧 Emails: {E} \| 📬 Letters: {L}"
         )
         self.SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(
-            r"📧 Emails: ({E}) \| 📬 Letters: ({L})"
+            r"📧 Emails: {E} \| 📬 Letters: {L}"
         )
         self.CONFIRMATION_TEMPLATE = (
             "> `u/{mentioned_name}` updated from `{old_flair}` to `{new_flair}`"
@@ -40,19 +40,19 @@ class Bot:
         self.FLAIR_UPDATE_FAILED = "> Unable to update flair for `u/{mentioned_name}` - please contact moderators."
         self.FLAIR_TEMPLATES = {
             (50, 99): {
-                "text": "50-99:📧 Emails: {E} | 📬 Letters: {L}",
+                "text": "📧 Emails: {E} | 📬 Letters: {L}",
                 "flair_css_class": "",
                 "id": "98cfeab8-e078-11ee-ba66-4644512330f4",
                 "mod_only": False,
             },
             (0, 49): {
-                "text": "0-49:📧 Emails: {E} | 📬 Letters: {L}",
+                "text": "📧 Emails: {E} | 📬 Letters: {L}",
                 "flair_css_class": "",
                 "id": "8c84163a-e078-11ee-a1a5-1e44362b6d8e",
                 "mod_only": False,
             },
             (0, 999999): {
-                "text": "Moderator Ranged - 0-49:📧 Emails: {E} | 📬 Letters: {L}",
+                "text": "Moderator Ranged - 📧 Emails: {E} | 📬 Letters: {L}",
                 "flair_css_class": "",
                 "id": "8c84163a-e078-11ee-a1a5-1e44362b6d8e",
                 "mod_only": True,
@@ -100,6 +100,11 @@ class Bot:
                     "flair_text": "Moderator Ranged - 📧 Emails: 1 | 📬 Letters: 1",
                     "flair_css_class": "",
                 }
+            case "snailmail":
+                return {
+                    "flair_text": "Snail Mail Volunteer - 📧 Emails: 1 | 📬 Letters: 1",
+                    "flair_css_class": "5c25c114-e078-11ee-8d9f-561af8fef755",
+                }
             case _:
                 return None
 
@@ -113,6 +118,7 @@ class Bot:
             "newuser",
             "othermod",
             "newmod",
+            "snailmail",
         ]:
             return None
         return Redditor(name, name)
