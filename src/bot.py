@@ -81,6 +81,7 @@ class Bot:
         for template in templates:
             match = self.FLAIR_TEMPLATE_PATTERN.search(template["text"])
             if match:
+                template["text"] = template["text"].replace(match.group(1), "")
                 flair_templates[(sint(match.group(2), 0), sint(match.group(3), 0))] = (
                     template
                 )
