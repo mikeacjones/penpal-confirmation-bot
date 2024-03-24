@@ -1,8 +1,7 @@
 # from mock_bot import Bot
 from mock_redditor import Redditor
 import main
-from main import increment_flair
-from main import get_flair_template
+from helpers_flair import increment_flair, get_flair_template
 from betamax_helpers import BOT, RECORDER
 
 main.BOT = BOT
