@@ -1,5 +1,7 @@
 import os
 import praw_bot_wrapper
+import sys
+from pushover import Pushover
 from datetime import datetime
 from praw import models
 from helpers_flair import increment_flair
@@ -8,10 +10,11 @@ from helpers_redditor import get_redditor
 from helpers import load_secrets, sint, deEmojify
 from settings import Settings
 from logger import LOGGER
-
+from helpers_submission import lock_previous_submissions, post_monthly_submission
 
 SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
 SECRETS = load_secrets(SUBREDDIT_NAME)
+PUSHOVER = Pushover(SECRETS["PUSHOVER_APP_TOKEN"], SECRETS["PUSHOVER_USER_TOKEN"])
 BOT = praw_bot_wrapper.bot(
     SECRETS["REDDIT_CLIENT_ID"],
     SECRETS["REDDIT_CLIENT_SECRET"],
@@ -121,6 +124,9 @@ def handle_catchup(started_at: datetime | None = None):
             ),
             recipient=SETTINGS.ME,
         )
+        PUSHOVER.send_message(
+            f"Bot error for r/{os.getenv('SUBREDDIT_NAME', 'unknown')} - Server Error from Reddit APIs. Started at {started_at}"
+        )
     current_confirmation_submission = get_current_confirmation_post(SETTINGS)
     current_confirmation_submission.comment_sort = "new"
     if not current_confirmation_submission:
@@ -142,5 +148,13 @@ def _handle_catchup(item: models.Submission | models.MoreComments):
 
 
 if __name__ == "__main__":
-    handle_catchup()
-    praw_bot_wrapper.run()
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "create-monthly":
+            new_submission = post_monthly_submission(SETTINGS)
+            lock_previous_submissions(SETTINGS, new_submission)
+            PUSHOVER.send_message(f"Created monthly post for r/{SUBREDDIT_NAME}")
+    else:
+        LOGGER.info("Bot start up")
+        PUSHOVER.send_message(f"Bot startup for r/{SUBREDDIT_NAME}")
+        handle_catchup()
+        praw_bot_wrapper.run()
