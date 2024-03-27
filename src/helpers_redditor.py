@@ -1,7 +1,8 @@
 import prawcore
+from praw import models, Reddit
 
 
-def get_redditor(bot, name):
+def get_redditor(bot: Reddit, name: str) -> models.Redditor | None:
     try:
         redditor = bot.redditor(name)
         if redditor.id:

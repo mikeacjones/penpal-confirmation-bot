@@ -1,15 +1,20 @@
-from praw_bot_wrapper import handle_praw_errors
+import settings
+from praw import models
 from helpers import sint
 from logger import LOGGER
-from settings import Settings
 
 
-def get_current_flair(settings, redditor):
+def get_current_flair(settings: settings.Settings, redditor: models.Redditor) -> dict:
     """Uses an API call to ensure we have the latest flair text"""
     return next(settings.SUBREDDIT.flair(redditor))
 
 
-def get_flair_template(settings, total_count, user, current_flair):
+def get_flair_template(
+    settings: settings.Settings,
+    total_count: int,
+    user: models.Redditor,
+    current_flair: str | None,
+) -> dict | None:
     """Retrieves the appropriate flair template, returned as an object."""
     if (
         current_flair
@@ -25,7 +30,12 @@ def get_flair_template(settings, total_count, user, current_flair):
     return None
 
 
-def increment_flair(settings, redditor, new_emails, new_letters):
+def increment_flair(
+    settings: settings.Settings,
+    redditor: models.Redditor,
+    new_emails: int,
+    new_letters: int,
+) -> tuple[str | None, str | None]:
     current_flair = get_current_flair(settings, redditor)
     current_flair_text = current_flair["flair_text"] if current_flair else None
     if current_flair_text is None or current_flair_text == "":
@@ -52,7 +62,12 @@ def increment_flair(settings, redditor, new_emails, new_letters):
     return (current_flair_text, new_flair_text)
 
 
-def set_redditor_flair(settings, redditor, new_flair_text, flair_template):
+def set_redditor_flair(
+    settings: settings.Settings,
+    redditor: models.Redditor,
+    new_flair_text: str,
+    flair_template,
+) -> None:
     settings.SUBREDDIT.flair.set(
         redditor, text=new_flair_text, flair_template_id=flair_template["id"]
     )

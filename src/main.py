@@ -2,14 +2,17 @@ import os
 import json
 import boto3
 import praw_bot_wrapper
-import praw
+from datetime import datetime
+from praw import models
 from helpers_flair import increment_flair
+from helpers_submission import get_current_confirmation_post
+from helpers_redditor import get_redditor
 from helpers import sint, deEmojify
 from settings import Settings
 from logger import LOGGER
 
 
-def load_secrets(subreddit_name):
+def load_secrets(subreddit_name: str) -> dict:
     if os.getenv("DEV"):
         secrets = os.getenv("SECRETS")
     else:
@@ -35,7 +38,7 @@ SETTINGS = Settings(BOT, SUBREDDIT_NAME)
 
 
 @praw_bot_wrapper.stream_handler(SETTINGS.SUBREDDIT.stream.comments)
-def handle_confirmation_thread_comment(comment):
+def handle_confirmation_thread_comment(comment: models.Comment) -> str | None:
     """Handles a comment left on the confirmation thread."""
     if not (
         not comment.saved
@@ -68,10 +71,10 @@ def handle_confirmation_thread_comment(comment):
     return reply_body
 
 
-def handle_confirmation(comment, match):
+def handle_confirmation(comment: models.Comment, match: dict) -> str | None:
     mentioned_name, emails, letters = match
     emails, letters = sint(emails, 0), sint(letters, 0)
-    mentioned_user = BOT.get_redditor(mentioned_name)
+    mentioned_user = get_redditor(BOT, mentioned_name)
 
     if not mentioned_user:
         return BOT.USER_DOESNT_EXIST.format(
@@ -94,11 +97,13 @@ def handle_confirmation(comment, match):
 
 
 @praw_bot_wrapper.stream_handler(BOT.inbox.stream)
-def handle_new_mail(message):
+def handle_new_mail(
+    message: models.Message | models.Comment | models.Submission,
+) -> None:
     """Monitors messages sent to the bot"""
     message.mark_read()
     if (
-        not isinstance(message, praw.models.Message)
+        not isinstance(message, models.Message)
         or message.author not in SETTINGS.CURRENT_MODS
     ):
         return
@@ -110,17 +115,38 @@ def handle_new_mail(message):
 
 
 @praw_bot_wrapper.outage_recovery_handler
-def notify_mods_of_outage_recovery(started_at):
+def handle_catchup(started_at: datetime | None = None):
     # changed how we send the modmail so that it because an archivable message
     # mod discussions can't be archived which is annoying
-    message = SETTINGS.SUBREDDIT.modmail.create(
-        subject="Bot Recovered from Extended Outage",
-        body=SETTINGS.OUTAGE_MESSAGE.format(
-            started_at=started_at, subreddit_name=SUBREDDIT_NAME
-        ),
-        recipient=SETTINGS.ME,
-    )
+    LOGGER.info("Running catchup function")
+    if started_at:
+        SETTINGS.SUBREDDIT.modmail.create(
+            subject="Bot Recovered from Extended Outage",
+            body=SETTINGS.OUTAGE_MESSAGE.format(
+                started_at=started_at, subreddit_name=SUBREDDIT_NAME
+            ),
+            recipient=SETTINGS.ME,
+        )
+    current_confirmation_submission = get_current_confirmation_post(SETTINGS)
+    current_confirmation_submission.comment_sort = "new"
+    if not current_confirmation_submission:
+        LOGGER.infO("Catchup skipped - no monthly post found")
+        return
+    _handle_catchup(current_confirmation_submission)
+    LOGGER.info("Catchup finished")
+
+
+def _handle_catchup(item: models.Submission | models.MoreComments):
+    for comment in item.comments:
+        if isinstance(comment, models.MoreComments):
+            _handle_catchup(comment)
+        if comment.stickied:  # ignore mod stickied comments
+            continue
+        if comment.saved:
+            return
+        handle_confirmation_thread_comment(comment)
 
 
 if __name__ == "__main__":
+    handle_catchup()
     praw_bot_wrapper.run()

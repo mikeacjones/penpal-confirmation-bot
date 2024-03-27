@@ -1,9 +1,11 @@
+from praw import models
 from datetime import datetime, timezone
 from logger import LOGGER
 from types import SimpleNamespace
+import settings
 
 
-def get_current_confirmation_post(settings):
+def get_current_confirmation_post(settings: settings.Settings) -> models.Submission:
     for submission in settings.ME.submissions.new(limit=5):
         if submission.subreddit.id == settings.SUBREDDIT.id:
             if submission.stickied:
@@ -11,7 +13,7 @@ def get_current_confirmation_post(settings):
     return None
 
 
-def post_monthly_submission(settings):
+def post_monthly_submission(settings: settings.Settings) -> models.Submission:
     """Creates the monthly confirmation thread."""
     previous_submission = get_current_confirmation_post(settings)
     now = datetime.now(timezone.utc)
@@ -56,7 +58,9 @@ def post_monthly_submission(settings):
     return new_submission
 
 
-def lock_previous_submissions(settings, exempt_submission):
+def lock_previous_submissions(
+    settings: settings.Settings, exempt_submission: models.Submission
+) -> None:
     """Locks previous month posts."""
     LOGGER.info("Locking previous submissions")
     for submission in settings.ME.submissions.new(limit=10):

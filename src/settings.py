@@ -74,7 +74,7 @@ class Settings:
                     template
                 )
                 LOGGER.info(
-                    f"Loaded flair template with range {match.group(2)} to {match.group(3)}: {template["text"]}"
+                    f"Loaded flair template with range {match.group(2)} to {match.group(3)}: {template['text']}"
                 )
             else:
                 special_match = self.SPECIAL_FLAIR_TEMPLATE_PATTERN.search(
@@ -86,7 +86,5 @@ class Settings:
                             template["id"], css_class=template["id"]
                         )
                     special_templates[template["id"]] = template
-                    LOGGER.info(
-                        f"Loaded non-ranged flair template: {template["text"]}"
-                    )
+                    LOGGER.info(f"Loaded non-ranged flair template: {template['text']}")
         return (flair_templates, special_templates)
