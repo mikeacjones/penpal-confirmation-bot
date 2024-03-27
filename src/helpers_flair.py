@@ -18,13 +18,13 @@ def get_flair_template(
     """Retrieves the appropriate flair template, returned as an object."""
     if (
         current_flair
-        and current_flair["flair_css_class"] in settings["SPECIAL_FLAIR_TEMPLATES"]
+        and current_flair["flair_css_class"] in settings.SPECIAL_FLAIR_TEMPLATES
     ):
-        return settings["SPECIAL_FLAIR_TEMPLATES"][current_flair["flair_css_class"]]
-    for (min_count, max_count), template in settings["FLAIR_TEMPLATES"].items():
+        return settings.SPECIAL_FLAIR_TEMPLATES[current_flair["flair_css_class"]]
+    for (min_count, max_count), template in settings.FLAIR_TEMPLATES.items():
         if min_count <= total_count <= max_count:
             # if a flair template was marked mod only, enforce that. Allows flairs like "Moderator | Trades min-max"
-            if template["mod_only"] == (user in settings["CURRENT_MODS"]):
+            if template["mod_only"] == (user in settings.CURRENT_MODS):
                 return template
 
     return None

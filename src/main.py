@@ -1,27 +1,13 @@
 import os
-import json
-import boto3
 import praw_bot_wrapper
 from datetime import datetime
 from praw import models
 from helpers_flair import increment_flair
 from helpers_submission import get_current_confirmation_post
 from helpers_redditor import get_redditor
-from helpers import sint, deEmojify
+from helpers import load_secrets, sint, deEmojify
 from settings import Settings
 from logger import LOGGER
-
-
-def load_secrets(subreddit_name: str) -> dict:
-    if os.getenv("DEV"):
-        secrets = os.getenv("SECRETS")
-    else:
-        secrets_manager = boto3.client("secretsmanager")
-        secrets_response = secrets_manager.get_secret_value(
-            SecretId=f"penpal-confirmation-bot/{subreddit_name}"
-        )
-        secrets = secrets_response["SecretString"]
-    return json.loads(secrets)
 
 
 SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
@@ -37,10 +23,8 @@ BOT = praw_bot_wrapper.bot(
 SETTINGS = Settings(BOT, SUBREDDIT_NAME)
 
 
-@praw_bot_wrapper.stream_handler(SETTINGS.SUBREDDIT.stream.comments)
-def handle_confirmation_thread_comment(comment: models.Comment) -> str | None:
-    """Handles a comment left on the confirmation thread."""
-    if not (
+def _should_process_comment(comment: models.Comment):
+    if (
         not comment.saved
         and not comment.removed
         and comment.link_author == SETTINGS.BOT_NAME
@@ -49,6 +33,16 @@ def handle_confirmation_thread_comment(comment: models.Comment) -> str | None:
         and comment.is_root
         and comment.banned_by is None
     ):
+        return True
+    return False
+
+
+@praw_bot_wrapper.stream_handler(SETTINGS.SUBREDDIT.stream.comments)
+def handle_confirmation_thread_comment(
+    comment: models.Comment, is_catchup=False
+) -> str | None:
+    """Handles a comment left on the confirmation thread."""
+    if not is_catchup and not _should_process_comment(comment):
         return
 
     LOGGER.info("Processing new comment https://reddit.com%s", comment.permalink)
@@ -60,7 +54,7 @@ def handle_confirmation_thread_comment(comment: models.Comment) -> str | None:
     reply_body = ""
     for match in all_matches:
         try:
-            reply_body += "\n\n" + handle_confirmation(comment, match)
+            reply_body += "\n\n" + _handle_confirmation(comment, match)
         except Exception as ex:
             LOGGER.info("Exception occurred while handling confirmation")
             LOGGER.info(ex)
@@ -71,7 +65,7 @@ def handle_confirmation_thread_comment(comment: models.Comment) -> str | None:
     return reply_body
 
 
-def handle_confirmation(comment: models.Comment, match: dict) -> str | None:
+def _handle_confirmation(comment: models.Comment, match: dict) -> str | None:
     mentioned_name, emails, letters = match
     emails, letters = sint(emails, 0), sint(letters, 0)
     mentioned_user = get_redditor(BOT, mentioned_name)
@@ -144,7 +138,7 @@ def _handle_catchup(item: models.Submission | models.MoreComments):
             continue
         if comment.saved:
             return
-        handle_confirmation_thread_comment(comment)
+        handle_confirmation_thread_comment(comment, True)
 
 
 if __name__ == "__main__":
