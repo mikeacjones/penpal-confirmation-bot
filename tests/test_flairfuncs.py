@@ -1,5 +1,3 @@
-# from mock_bot import Bot
-
 from settings import Settings
 from betamax import Betamax
 from betamax_helpers import use_recorder
