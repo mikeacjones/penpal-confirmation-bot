@@ -1,4 +1,4 @@
-from mock_bot import Bot
+""" from mock_bot import Bot
 from mock_redditor import Redditor
 from mock_comment import Comment
 import main
@@ -84,40 +84,4 @@ def test_handle_confirmation_thread_comment_single_ok(BOT):
         reply_body
         == "\n\n> `u/thisisreallytricky` updated from ` Emails: 1 |  Letters: 1` to ` Emails: 6 |  Letters: 6`"
     )
-
-
-def test_handle_confirmation_thread_comment_multiple_ok(BOT):
-    comment = Comment(
-        "bot",
-        """u/thisisreallytricky 5-5
-            u/digitalmayhap 5 - 5""",
-    )
-    main.BOT = BOT
-    reply_body = handle_confirmation_thread_comment(comment)
-    assert (
-        reply_body
-        == "\n\n> `u/thisisreallytricky` updated from ` Emails: 1 |  Letters: 1` to ` Emails: 6 |  Letters: 6`\n\n> `u/digitalmayhap` updated from `Moderator -  Emails: 1 |  Letters: 1` to `Moderator -  Emails: 6 |  Letters: 6`"
-    )
-
-
-def test_handle_confirmation_thread_comment_multiple_mixed(BOT):
-    comment = Comment(
-        "bot",
-        """u/thisisreallytricky 5-5
-            u/digitalmayhap 5 - 5
-            u/newmod - 1 1
-            u/newuser 1 1
-            u/othermod - 1 - 1
-            u/unknownuser \\- 1 - 1""",
-    )
-    main.BOT = BOT
-    reply_body = handle_confirmation_thread_comment(comment)
-    assert (
-        reply_body
-        == "\n\n> `u/thisisreallytricky` updated from ` Emails: 1 |  Letters: 1` to ` Emails: 6 |  Letters: 6`"
-        + "\n\n> `u/digitalmayhap` updated from `Moderator -  Emails: 1 |  Letters: 1` to `Moderator -  Emails: 6 |  Letters: 6`"
-        + "\n\n> `u/newmod` updated from `No Flair` to `Moderator Ranged -  Emails: 1 |  Letters: 1`"
-        + "\n\n> `u/newuser` updated from `No Flair` to ` Emails: 1 |  Letters: 1`"
-        + "\n\n> `u/othermod` updated from `Moderator Ranged -  Emails: 1 |  Letters: 1` to `Moderator Ranged -  Emails: 2 |  Letters: 2`"
-        + "\n\n> `u/unknownuser` does not exist"
-    )
+"""

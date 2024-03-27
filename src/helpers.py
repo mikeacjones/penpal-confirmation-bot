@@ -1,4 +1,19 @@
 import re
+import os
+import json
+import boto3
+
+
+def load_secrets(subreddit_name: str) -> dict:
+    if os.getenv("DEV"):
+        secrets = os.getenv("SECRETS")
+    else:
+        secrets_manager = boto3.client("secretsmanager")
+        secrets_response = secrets_manager.get_secret_value(
+            SecretId=f"penpal-confirmation-bot/{subreddit_name}"
+        )
+        secrets = secrets_response["SecretString"]
+    return json.loads(secrets)
 
 
 def sint(str, default):
