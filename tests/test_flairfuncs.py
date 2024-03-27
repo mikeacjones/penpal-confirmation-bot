@@ -1,88 +1,37 @@
 # from mock_bot import Bot
-from mock_redditor import Redditor
-import main
-from helpers_flair import increment_flair, get_flair_template
-from betamax_helpers import BOT, RECORDER
 
-main.BOT = BOT
-
-
-def test_get_flair_template_nonmod_good():
-    with RECORDER.use_cassette("test_get_flair_template_nonmod_good"):
-        redditor = BOT.get_redditor("thisisreallytricky")
-        c_template = BOT.get_current_flair(redditor)
-        template = get_flair_template(10, redditor, c_template)
-        assert template["id"] == "2693db3e-dd90-11ee-99a0-e66a03397746"
+from settings import Settings
+from betamax import Betamax
+from betamax_helpers import use_recorder
+from helpers_flair import get_current_flair, increment_flair
 
 
-def test_get_flair_template_nonmod_none():
-    with RECORDER.use_cassette("test_get_flair_template_nonmod_none"):
-        redditor = BOT.get_redditor("thisisreallytricky")
-        c_template = BOT.get_current_flair(redditor)
-        template = get_flair_template(9999, redditor, c_template)
-        assert template == None
+@use_recorder
+def test_get_current_flair(recorder: Betamax, settings: Settings):
+    current_flair = get_current_flair(settings, "digitalmayhap")
+    assert (
+        current_flair["flair_text"]
+        == "Snail Mail Volunteer - 📧 Emails: 6 | 📬 Letters: 6"
+    )
+    assert current_flair["flair_css_class"] == "846bff86-dfc8-11ee-9926-2ef1a20f02fd"
 
 
-def test_get_flair_template_mod_good():
-    with RECORDER.use_cassette("test_get_flair_template_mod_good"):
-        redditor = BOT.get_redditor("PenPalConfirmationBo")
-        c_template = BOT.get_current_flair(redditor)
-        template = get_flair_template(20, redditor, c_template)
-        assert template["id"] == "270a4e5c-dd92-11ee-b79f-fab5961d9741"
+@use_recorder
+def test_increment_flair_nonranged_good(recorder: Betamax, settings: Settings):
+    (current_flair, new_flair) = increment_flair(settings, "digitalmayhap", 1, 1)
+    assert current_flair == "Snail Mail Volunteer - 📧 Emails: 6 | 📬 Letters: 6"
+    assert new_flair == "Snail Mail Volunteer - 📧 Emails: 7 | 📬 Letters: 7"
 
 
-def test_get_flair_template_nonmod_fixed_good():
-    with RECORDER.use_cassette("test_get_flair_template_nonmod_fixed_good"):
-        redditor = BOT.get_redditor("digitalmayhap")
-        c_template = BOT.get_current_flair(redditor)
-        template = get_flair_template(10, redditor, c_template)
-        assert template["id"] == "846bff86-dfc8-11ee-9926-2ef1a20f02fd"
+@use_recorder
+def test_increment_flair_ranged_newuser(recorder: Betamax, settings: Settings):
+    (current_flair, new_flair) = increment_flair(settings, "YarnSwapper", 1, 1)
+    assert current_flair == "No Flair"
+    assert new_flair == "📧 Emails: 1 | 📬 Letters: 1"
 
 
-def test_increment_flair_special():
-    with RECORDER.use_cassette("test_increment_flair_special"):
-        redditor = BOT.get_redditor("digitalmayhap")
-        current_flair = BOT.get_current_flair(redditor)
-        (current_flair_text, new_flair_text) = increment_flair(redditor, 5, 5)
-
-        assert current_flair_text == current_flair["flair_text"]
-        assert new_flair_text == "Snail Mail Volunteer - 📧 Emails: 6 | 📬 Letters: 6"
-
-
-def test_increment_flair_ranged():
-    with RECORDER.use_cassette("test_increment_flair_ranged"):
-        redditor = BOT.get_redditor("thisisreallytricky")
-        current_flair = BOT.get_current_flair(redditor)
-        (current_flair_text, new_flair_text) = increment_flair(redditor, 5, 5)
-
-        assert current_flair_text == current_flair["flair_text"]
-        assert new_flair_text == "📧 Emails: 6 | 📬 Letters: 6"
-
-
-def test_increment_flair_new_user():
-    with RECORDER.use_cassette("test_increment_flair_new_user"):
-        redditor = BOT.get_redditor("YarnSwapper")
-        (current_flair_text, new_flair_text) = increment_flair(redditor, 5, 5)
-        assert current_flair_text == "No Flair"
-        assert new_flair_text == "📧 Emails: 5 | 📬 Letters: 5"
-
-
-"""def test_increment_flair_moderator_ranged():
-    with RECORDER.use_cassette("test_flairfuncs"):
-        main.BOT = BOT
-        current_flair = BOT.get_current_flair(Redditor("othermod"))
-        (current_flair_text, new_flair_text) = increment_flair(
-            Redditor("othermod"), 5, 5
-        )
-
-        assert current_flair_text == current_flair["flair_text"]
-        assert new_flair_text == "Moderator Ranged - 📧 Emails: 6 | 📬 Letters: 6"
-
-
-def test_increment_flair_new_moderator_ranged():
-    with RECORDER.use_cassette("test_flairfuncs"):
-        main.BOT = BOT
-        (current_flair_text, new_flair_text) = increment_flair(Redditor("newmod"), 5, 5)
-        assert current_flair_text == "No Flair"
-        assert new_flair_text == "Moderator Ranged - 📧 Emails: 5 | 📬 Letters: 5"
-        """
+@use_recorder
+def test_increment_flair_ranged_good(recorder: Betamax, settings: Settings):
+    (current_flair, new_flair) = increment_flair(settings, "YarnSwapper", 1, 1)
+    assert current_flair == "📧 Emails: 1 | 📬 Letters: 1"
+    assert new_flair == "📧 Emails: 2 | 📬 Letters: 2"

@@ -23,46 +23,38 @@ class Settings:
         self.FULLNAME = self.ME.fullname
         self.SUBREDDIT_NAME = subreddit_name
         self.SUBREDDIT = bot.subreddit(subreddit_name)
-        self.OUTAGE_MESSAGE = self.load_template(self.SUBREDDIT, "outage_recovery")
+        self.OUTAGE_MESSAGE = self.load_template("outage_recovery")
         self.CONFIRMATION_PATTERN = re.compile(
-            self.load_template(self.SUBREDDIT, "confirmation_regex_pattern")
+            self.load_template("confirmation_regex_pattern")
         )
-        self.FLAIR_PATTERN = re.compile(
-            self.load_template(self.SUBREDDIT, "flair_regex")
-        )
+        self.FLAIR_PATTERN = re.compile(self.load_template("flair_regex"))
         self.FLAIR_TEMPLATE_PATTERN = re.compile(
-            self.load_template(self.SUBREDDIT, "ranged_flair_template_regex")
+            self.load_template("ranged_flair_template_regex")
         )
         self.SPECIAL_FLAIR_TEMPLATE_PATTERN = re.compile(
-            self.load_template(self.SUBREDDIT, "special_flair_template_regex")
+            self.load_template("special_flair_template_regex")
         )
-        self.CONFIRMATION_TEMPLATE = self.load_template(
-            self.SUBREDDIT, "confirmation_message"
-        )
-        self.USER_DOESNT_EXIST = self.load_template(self.SUBREDDIT, "user_doesnt_exist")
-        self.CANT_UPDATE_YOURSELF = self.load_template(
-            self.SUBREDDIT, "cant_update_yourself"
-        )
-        self.FLAIR_UPDATE_FAILED = self.load_template(
-            self.SUBREDDIT, "flair_update_failed"
-        )
-        self.FLAIR_TEMPLATES, self.SPECIAL_FLAIR_TEMPLATES = self._load_flair_templates(
-            self.SUBREDDIT
+        self.CONFIRMATION_TEMPLATE = self.load_template("confirmation_message")
+        self.USER_DOESNT_EXIST = self.load_template("user_doesnt_exist")
+        self.CANT_UPDATE_YOURSELF = self.load_template("cant_update_yourself")
+        self.FLAIR_UPDATE_FAILED = self.load_template("flair_update_failed")
+        self.FLAIR_TEMPLATES, self.SPECIAL_FLAIR_TEMPLATES = (
+            self._load_flair_templates()
         )
         self.CURRENT_MODS = [str(mod) for mod in self.SUBREDDIT.moderator()]
 
-    def load_template(self, subreddit, template):
+    def load_template(self, template):
         """Loads a template either from local file or Reddit Wiki, returned as a string."""
         try:
-            wiki = subreddit.wiki[f"confirmation-bot/{template}"]
+            wiki = self.SUBREDDIT.wiki[f"confirmation-bot/{template}"]
             return wiki.content_md
         except (prawcore.exceptions.NotFound, prawcore.exceptions.Forbidden):
             with open(f"src/mdtemplates/{template}.md", "r", encoding="utf-8") as file:
                 return file.read()
 
-    def _load_flair_templates(self, subreddit):
+    def _load_flair_templates(self):
         """Loads flair templates from Reddit, returned as a list."""
-        templates = subreddit.flair.templates
+        templates = self.SUBREDDIT.flair.templates
         flair_templates = {}
         special_templates = {}
 
@@ -82,7 +74,7 @@ class Settings:
                 )
                 if special_match:
                     if template["css_class"] != template["id"]:
-                        subreddit.flair.templates.update(
+                        self.SUBREDDIT.flair.templates.update(
                             template["id"], css_class=template["id"]
                         )
                     special_templates[template["id"]] = template

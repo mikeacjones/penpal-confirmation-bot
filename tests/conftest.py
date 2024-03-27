@@ -4,15 +4,18 @@ import praw_bot_wrapper
 import os
 import base64
 import urllib
+from praw import Reddit
 from betamax import Betamax
 from betamax_helpers import sanitize_cassette
-from main import load_secrets
 
 sys.path.append("src")
 from settings import Settings
+from helpers import load_secrets
+
+SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
+secrets = load_secrets(SUBREDDIT_NAME)
 
 with Betamax.configure() as config:
-    secrets = load_secrets()
     # Tell Betamax where to find the cassettes (recorded requests and responses)
     config.cassette_library_dir = "tests/cassettes"
     # Hide the OAuth2 credentials in recorded interactions
@@ -25,7 +28,6 @@ with Betamax.configure() as config:
             ).encode("utf-8")
         ).decode("utf-8"),
     )
-    config.define_cassette_placeholder("<REDDIT-USERNAME>", secrets["REDDIT_USERNAME"])
     config.define_cassette_placeholder(
         "<REDDIT-PASSWORD>", urllib.parse.quote(secrets["REDDIT_PASSWORD"])
     )
@@ -36,10 +38,14 @@ with Betamax.configure() as config:
         "<REDDIT-CLIENT-SECRET>", secrets["REDDIT_CLIENT_SECRET"]
     )
 
-secrets = load_secrets()
-SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
-BOT = praw_bot_wrapper.Bot(secrets, SUBREDDIT_NAME)
-http = BOT.REDDIT._core._requestor._http
+BOT = praw_bot_wrapper.bot(
+    secrets["REDDIT_CLIENT_ID"],
+    secrets["REDDIT_CLIENT_SECRET"],
+    secrets["REDDIT_USER_AGENT"],
+    secrets["REDDIT_USERNAME"],
+    secrets["REDDIT_PASSWORD"],
+)
+http = BOT._core._requestor._http
 http.headers["Accept-Encoding"] = "identity"
 RECORDER = Betamax(http)
 
@@ -48,5 +54,15 @@ with RECORDER.use_cassette("load_settings"):
 
 
 @pytest.fixture
-def SETTINGS():
+def settings() -> Settings:
     return SETTINGS
+
+
+@pytest.fixture
+def bot() -> Reddit:
+    return BOT
+
+
+@pytest.fixture
+def recorder() -> Betamax:
+    return RECORDER

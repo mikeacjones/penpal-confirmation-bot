@@ -138,7 +138,7 @@ def _handle_catchup(item: models.Submission | models.MoreComments):
             continue
         if comment.saved:
             return
-        handle_confirmation_thread_comment(comment, True)
+        handle_confirmation_thread_comment(comment, is_catchup=True)
 
 
 if __name__ == "__main__":

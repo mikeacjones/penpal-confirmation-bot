@@ -13,7 +13,7 @@ def get_current_confirmation_post(settings: settings.Settings) -> models.Submiss
     return None
 
 
-def post_monthly_submission(settings: settings.Settings) -> models.Submission:
+def post_monthly_submission(settings: settings.Settings) -> models.Submission | None:
     """Creates the monthly confirmation thread."""
     previous_submission = get_current_confirmation_post(settings)
     now = datetime.now(timezone.utc)
@@ -29,7 +29,7 @@ def post_monthly_submission(settings: settings.Settings) -> models.Submission:
             LOGGER.info(
                 "Post monthly confirmation called and skipped; monthly post already exists"
             )
-            return
+            return None
 
     monthly_post_flair_id = settings.load_template("monthly_post_flair_id")
     monthly_post_template = settings.load_template("monthly_post")
@@ -59,14 +59,14 @@ def post_monthly_submission(settings: settings.Settings) -> models.Submission:
 
 
 def lock_previous_submissions(
-    settings: settings.Settings, exempt_submission: models.Submission
+    settings: settings.Settings, exempt_submission: models.Submission = None
 ) -> None:
     """Locks previous month posts."""
     LOGGER.info("Locking previous submissions")
     for submission in settings.ME.submissions.new(limit=10):
         if submission.subreddit_id != settings.SUBREDDIT.name:
             continue
-        if submission == exempt_submission:
+        if exempt_submission and submission == exempt_submission:
             continue
         if not submission.locked:
             LOGGER.info("Locking https://reddit.com%s", submission.permalink)

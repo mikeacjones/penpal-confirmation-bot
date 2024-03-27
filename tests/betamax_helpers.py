@@ -1,10 +1,7 @@
 from betamax.cassette import cassette
 from betamax import Betamax
-from main import load_secrets
-import base64
 import json
-import urllib.parse
-import os
+import functools
 
 
 def sanitize_cassette(interaction, current_cassette):
@@ -40,3 +37,13 @@ def sanitize_cassette(interaction, current_cassette):
                         placeholder=f"<{restricted_header}>", replace=value
                     )
                 )
+
+
+def use_recorder(func):
+    @functools.wraps(func)
+    def __call__(*args, **kwargs):
+        _recorder = kwargs["recorder"]
+        with _recorder.use_cassette(func.__name__):
+            return func(*args, **kwargs)
+
+    return __call__
