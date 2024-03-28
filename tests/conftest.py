@@ -44,7 +44,7 @@ with Betamax.configure() as config:
         "<PUSHOVER-USER-TOKEN>", secrets["PUSHOVER_USER_TOKEN"]
     )
 
-BOT = praw_bot_wrapper.bot(
+BOT = Reddit(
     secrets["REDDIT_CLIENT_ID"],
     secrets["REDDIT_CLIENT_SECRET"],
     secrets["REDDIT_USER_AGENT"],
