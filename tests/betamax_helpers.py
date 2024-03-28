@@ -10,7 +10,8 @@ def sanitize_cassette(interaction, current_cassette):
     if interaction.data["response"]["status"]["code"] != 200:
         return
 
-    body = interaction.data["response"]["body"]["string"]
+    body = interaction.data["response"]["body"]
+    body = body.get("string", "")
     if "access_token" in body:
         body = json.loads(body)
         current_cassette.placeholders.append(
