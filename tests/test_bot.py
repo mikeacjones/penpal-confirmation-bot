@@ -4,7 +4,7 @@ from settings import Settings
 from betamax import Betamax
 from betamax_helpers import use_recorder
 from pushover import Pushover
-from main import handle_catchup, _should_process_comment
+from main import handle_catchup, _should_process_comment, handle_new_mail
 from praw import Reddit
 from datetime import datetime, timezone
 
@@ -45,3 +45,17 @@ def test_should_process_comment_should_process(recorder: Betamax, bot: Reddit):
     comment = bot.comment("kwvw3r0")
     comment.link_author = comment.submission.author
     assert _should_process_comment(comment)
+
+
+@use_recorder
+def test_monitor_mail_mod(recorder: Betamax, bot: Reddit):
+    message = bot.inbox.message("27u1hji")
+    handle_new_mail(message)
+    return
+
+
+@use_recorder
+def test_monitor_mail_not_mod(recorder: Betamax, bot: Reddit):
+    message = bot.inbox.message("27u1q5o")
+    handle_new_mail(message)
+    return

@@ -106,7 +106,7 @@ def handle_new_mail(
         return
     if "reload" in message.body.lower():
         LOGGER.info("Mod requested settings reload")
-        SETTINGS.reload()
+        SETTINGS.reload(BOT, SUBREDDIT_NAME)
         message.reply("Successfully reloaded bot settings")
     message.mark_read()
 
