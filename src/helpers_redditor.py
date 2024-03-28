@@ -9,4 +9,3 @@ def get_redditor(bot: Reddit, name: str) -> models.Redditor | None:
             return redditor
     except prawcore.exceptions.NotFound:
         return None
-    return None

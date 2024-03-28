@@ -37,6 +37,12 @@ with Betamax.configure() as config:
     config.define_cassette_placeholder(
         "<REDDIT-CLIENT-SECRET>", secrets["REDDIT_CLIENT_SECRET"]
     )
+    config.define_cassette_placeholder(
+        "<PUSHOVER-APP-TOKEN>", secrets["PUSHOVER_APP_TOKEN"]
+    )
+    config.define_cassette_placeholder(
+        "<PUSHOVER-USER-TOKEN>", secrets["PUSHOVER_USER_TOKEN"]
+    )
 
 BOT = praw_bot_wrapper.bot(
     secrets["REDDIT_CLIENT_ID"],
