@@ -19,7 +19,7 @@ echo "Description=Creates monthly post for r/$subreddit_name" >>/etc/systemd/sys
 echo "" >>/etc/systemd/system/$subreddit_name-monthly-post.service
 echo "[Service]" >>/etc/systemd/system/$subreddit_name-monthly-post.service
 echo "Type=oneshot" >>/etc/systemd/system/$subreddit_name-monthly-post.service
-echo "ExecStart=docker exec $subreddit_name python3 bot.py create-monthly" >>/etc/systemd/system/$subreddit_name-monthly-post.service
+echo "ExecStart=docker exec $subreddit_name python3 main.py create-monthly" >>/etc/systemd/system/$subreddit_name-monthly-post.service
 
 # Create the timer file for creating the monthly post
 echo "[Unit]" >>/etc/systemd/system/$subreddit_name-monthly-post.timer

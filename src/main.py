@@ -3,7 +3,7 @@ import praw_bot_wrapper
 import sys
 from pushover import Pushover
 from datetime import datetime
-from praw import models
+from praw import models, Reddit
 from helpers_flair import increment_flair
 from helpers_submission import get_current_confirmation_post
 from helpers_redditor import get_redditor
@@ -15,13 +15,12 @@ from helpers_submission import lock_previous_submissions, post_monthly_submissio
 SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
 SECRETS = load_secrets(SUBREDDIT_NAME)
 PUSHOVER = Pushover(SECRETS["PUSHOVER_APP_TOKEN"], SECRETS["PUSHOVER_USER_TOKEN"])
-BOT = praw_bot_wrapper.bot(
-    SECRETS["REDDIT_CLIENT_ID"],
-    SECRETS["REDDIT_CLIENT_SECRET"],
-    SECRETS["REDDIT_USER_AGENT"],
-    SECRETS["REDDIT_USERNAME"],
-    SECRETS["REDDIT_PASSWORD"],
-    outage_threshold=10,
+BOT = Reddit(
+    client_id=SECRETS["REDDIT_CLIENT_ID"],
+    client_secret=SECRETS["REDDIT_CLIENT_SECRET"],
+    user_agent=SECRETS["REDDIT_USER_AGENT"],
+    username=SECRETS["REDDIT_USERNAME"],
+    password=SECRETS["REDDIT_PASSWORD"],
 )
 SETTINGS = Settings(BOT, SUBREDDIT_NAME)
 
@@ -111,9 +110,9 @@ def handle_new_mail(
     message.mark_read()
 
 
-@praw_bot_wrapper.outage_recovery_handler
+@praw_bot_wrapper.outage_recovery_handler(outage_threshold=10)
 def handle_catchup(started_at: datetime | None = None):
-    # changed how we send the modmail so that it because an archivable message
+    # send the modmail this way so it is archivable
     # mod discussions can't be archived which is annoying
     LOGGER.info("Running catchup function")
     if started_at:
@@ -148,13 +147,18 @@ def _handle_catchup(item: models.Submission | models.MoreComments):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "create-monthly":
-            new_submission = post_monthly_submission(SETTINGS)
-            lock_previous_submissions(SETTINGS, new_submission)
-            PUSHOVER.send_message(f"Created monthly post for r/{SUBREDDIT_NAME}")
-    else:
-        LOGGER.info("Bot start up")
-        PUSHOVER.send_message(f"Bot startup for r/{SUBREDDIT_NAME}")
-        handle_catchup()
-        praw_bot_wrapper.run()
+    try:
+        if len(sys.argv) > 1:
+            if sys.argv[1] == "create-monthly":
+                new_submission = post_monthly_submission(SETTINGS)
+                lock_previous_submissions(SETTINGS, new_submission)
+                PUSHOVER.send_message(f"Created monthly post for r/{SUBREDDIT_NAME}")
+        else:
+            LOGGER.info("Bot start up")
+            PUSHOVER.send_message(f"Bot startup for r/{SUBREDDIT_NAME}")
+            handle_catchup()
+            praw_bot_wrapper.run()
+    except Exception as ex:
+        LOGGER.exception(ex)
+        PUSHOVER.send_message(f"r{SUBREDDIT_NAME} bot exception: {ex}")
+        pass
