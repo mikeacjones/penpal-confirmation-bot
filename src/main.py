@@ -110,7 +110,7 @@ def handle_new_mail(
     message.mark_read()
 
 
-@praw_bot_wrapper.outage_recovery_handler
+@praw_bot_wrapper.outage_recovery_handler(outage_threshold=10)
 def handle_catchup(started_at: datetime | None = None):
     # changed how we send the modmail so that it because an archivable message
     # mod discussions can't be archived which is annoying
