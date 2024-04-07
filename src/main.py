@@ -73,12 +73,12 @@ def _handle_confirmation(comment: models.Comment, match: dict) -> str | None:
     mentioned_user = get_redditor(BOT, mentioned_name)
 
     if not mentioned_user:
-        return BOT.USER_DOESNT_EXIST.format(
+        return SETTINGS.USER_DOESNT_EXIST.format(
             comment=comment, mentioned_name=mentioned_name
         )
 
     if mentioned_user.fullname == comment.author_fullname:
-        return BOT.CANT_UPDATE_YOURSELF
+        return SETTINGS.CANT_UPDATE_YOURSELF
 
     old_flair, new_flair = increment_flair(SETTINGS, mentioned_user, emails, letters)
     if not old_flair or not new_flair:
